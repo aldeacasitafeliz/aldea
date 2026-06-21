@@ -8409,7 +8409,7 @@ function init() {
 const DB_MED_LOGS_KEY = 'aldea_med_logs';
 const DB_medLogs = {
   get all() { try { return JSON.parse(localStorage.getItem(DB_MED_LOGS_KEY)||'[]'); } catch(e){return[];} },
-  save(arr) { localStorage.setItem(DB_MED_LOGS_KEY, JSON.stringify(arr)); }
+  save(arr) { localStorage.setItem(DB_MED_LOGS_KEY, JSON.stringify(arr)); _sbSync(DB_MED_LOGS_KEY, arr); }
 };
 
 // ===================== ACCESO =====================
