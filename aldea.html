@@ -406,26 +406,29 @@ tr:hover td { background: var(--gray-50); }
   .btn { padding: 11px 16px; font-size: 14px; }
   .btn-sm { padding: 8px 12px; font-size: 13px; }
 
-  /* Tabs: horizontal scroll ONLY — no vertical jump */
+  /* Tabs: smooth native horizontal scroll, no JS blocking */
   .tabs, .ficha-tabs {
     overflow-x: auto;
     overflow-y: hidden;
     flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    touch-action: pan-x;
-    overscroll-behavior-x: contain;
-    scroll-snap-type: x proximity;
-    /* Stable baseline — no shrinking */
+    -webkit-overflow-scrolling: touch; /* momentum / inertia on iOS */
+    touch-action: pan-x;              /* browser handles H-scroll, won't trigger page V-scroll */
+    scroll-behavior: smooth;
     align-items: stretch;
-    padding-bottom: 1px; /* prevent border-bottom clipping */
+    padding-bottom: 1px;
+    /* No overscroll-behavior or scroll-snap — they cause the rigid feel */
   }
   .tab-btn, .ficha-tab-btn {
     white-space: nowrap;
     flex-shrink: 0;
-    scroll-snap-align: start;
-    /* Larger touch target */
     padding: 12px 16px;
     font-size: 14px;
+  }
+  /* Bottom nav scroll bar — same treatment */
+  .bottom-nav-scroll {
+    touch-action: pan-x;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
   }
 
   /* Visual grid: reduce dog col width */
@@ -2436,28 +2439,9 @@ const PAGE_TITLES = {
   salidas: 'Salidas del día'
 };
 
-// ---- Horizontal-only scroll lock for tab bars ----
-function _lockHScroll(el) {
-  if (!el) return;
-  let sx, sy, locked;
-  el.addEventListener('touchstart', e => {
-    sx = e.touches[0].clientX;
-    sy = e.touches[0].clientY;
-    locked = null;
-  }, { passive: true });
-  el.addEventListener('touchmove', e => {
-    if (!locked) {
-      const dx = Math.abs(e.touches[0].clientX - sx);
-      const dy = Math.abs(e.touches[0].clientY - sy);
-      if (dx > 5 || dy > 5) locked = dx >= dy ? 'x' : 'y';
-    }
-    if (locked === 'x') e.preventDefault();
-  }, { passive: false });
-}
-
-function _applyTabScrollLocks() {
-  document.querySelectorAll('.tabs, .ficha-tabs, .bottom-nav-scroll').forEach(_lockHScroll);
-}
+// ---- Horizontal scroll: no JS needed, handled entirely by CSS touch-action ----
+function _lockHScroll() {} // kept as no-op so existing calls don't error
+function _applyTabScrollLocks() {}
 
 function openSidebar() {
   document.querySelector('.sidebar').classList.add('open');
