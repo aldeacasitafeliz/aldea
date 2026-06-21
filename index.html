@@ -335,23 +335,32 @@ tr:hover td { background: var(--gray-50); }
   }
   .sidebar.open { left: 0; }
 
-  /* Main fills all space and is the scroll container.
-     padding-bottom + box-sizing:border-box makes the scrollable area
-     end exactly at the top of the fixed bottom nav — content never
-     slides underneath it, so nothing gets hidden. */
+  /* ── Scroll container definitivo para iOS + Android ──────────────────────
+     PROBLEMA: overflow-x:hidden + overflow-y:auto en el MISMO elemento
+     hace que iOS Safari no distinga el eje de scroll → bloquea scroll vertical.
+     SOLUCIÓN:
+       1. overflow-y: scroll  (fuerza scroll container siempre, más confiable en iOS)
+       2. NO usar overflow-x en .main (body ya tiene overflow:hidden → previene scroll horizontal)
+       3. touch-action: pan-y → iOS enruta gestos verticales aquí antes que a hijos
+       4. overscroll-behavior-y: contain → evita que el scroll se "escape" al body
+       5. padding-bottom en .content (no en .main) → garantiza que último elemento
+          quede 24px sobre el nav en cualquier dispositivo
+  ──────────────────────────────────────────────────────────────────────── */
   .main {
     height: 100dvh;
     height: 100vh;
-    box-sizing: border-box;
-    /* Reserve space for fixed bottom nav (≈56px) + gap (24px) + safe area */
-    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-    overflow-y: auto;
-    overflow-x: hidden;
+    overflow-y: scroll;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    /* NO overflow-x here — body{overflow:hidden} handles it */
   }
 
-  /* Content padding: extra bottom so last card breathes above the padding area */
-  .content { padding: 16px 14px 20px; }
+  /* Bottom padding on content ensures last element clears fixed nav (56px) + 24px gap + safe-area */
+  .content {
+    padding: 16px 14px calc(80px + env(safe-area-inset-bottom, 0px));
+    overflow-x: hidden; /* horizontal clip here, not on scroll container */
+  }
 
   /* Topbar: respect notch / Dynamic Island */
   .topbar {
@@ -516,7 +525,8 @@ tr:hover td { background: var(--gray-50); }
     margin-bottom: 10px;
     padding: 2px 0;
     box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    overflow: hidden;
+    overflow: hidden; /* fallback */
+    overflow: clip;   /* no scroll context created — safer for iOS touch routing */
   }
   table.mc-table td {
     display: flex !important;
