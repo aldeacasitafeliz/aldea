@@ -255,6 +255,25 @@ tr:hover td { background: var(--gray-50); }
 </head>
 <body>
 
+<!-- PANTALLA DE ACCESO -->
+<div id="login-screen" style="display:none;position:fixed;inset:0;background:linear-gradient(135deg,#2d5a27 0%,#4a7c59 100%);z-index:99999;display:flex;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:16px;padding:40px;width:100%;max-width:380px;margin:16px;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center">
+    <div style="font-size:48px;margin-bottom:8px">🐾</div>
+    <div style="font-size:22px;font-weight:700;color:#2d5a27;margin-bottom:4px">Aldea</div>
+    <div style="font-size:13px;color:#888;margin-bottom:28px">Sistema de gestión</div>
+    <div id="login-error" style="display:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:10px;font-size:13px;margin-bottom:16px">Clave incorrecta. Intenta de nuevo.</div>
+    <input type="password" id="login-input" placeholder="Ingresa la clave de acceso"
+      style="width:100%;padding:12px 16px;border:2px solid #e5e7eb;border-radius:8px;font-size:15px;outline:none;box-sizing:border-box;margin-bottom:12px;transition:border-color .2s"
+      onfocus="this.style.borderColor='#2d5a27'" onblur="this.style.borderColor='#e5e7eb'"
+      onkeydown="if(event.key==='Enter')checkLogin()">
+    <button onclick="checkLogin()"
+      style="width:100%;padding:13px;background:#2d5a27;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:background .2s"
+      onmouseover="this.style.background='#1e3d1b'" onmouseout="this.style.background='#2d5a27'">
+      Ingresar
+    </button>
+  </div>
+</div>
+
 <!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="sidebar-logo">
@@ -1327,6 +1346,11 @@ tr:hover td { background: var(--gray-50); }
         <label>Fecha de incorporación</label>
         <input type="date" id="ct-joined">
       </div>
+      <div class="form-group">
+        <label>Contraseña individual *</label>
+        <input type="password" id="ct-password" placeholder="Contraseña de la cuidadora" autocomplete="new-password">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Se usará para validar acciones que afecten sus métricas</div>
+      </div>
       <div class="form-group span2">
         <label>Observaciones</label>
         <textarea id="ct-notes" rows="2"></textarea>
@@ -1335,6 +1359,23 @@ tr:hover td { background: var(--gray-50); }
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-caretaker')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveCaretaker()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal verificación contraseña cuidadora -->
+<div class="modal-overlay" id="modal-ct-password">
+  <div class="modal" style="max-width:360px">
+    <div class="modal-title">🔒 Verificar identidad</div>
+    <div id="ct-pw-desc" style="font-size:13px;color:var(--text-muted);margin-bottom:16px"></div>
+    <div id="ct-pw-error" style="display:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px">Contraseña incorrecta. Intenta de nuevo.</div>
+    <div class="form-group">
+      <label id="ct-pw-label">Contraseña de la cuidadora</label>
+      <input type="password" id="ct-pw-input" placeholder="Ingresa la contraseña" onkeydown="if(event.key==='Enter')_ctPwConfirm()">
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="_ctPwCancel()">Cancelar</button>
+      <button class="btn btn-primary" onclick="_ctPwConfirm()">Confirmar</button>
     </div>
   </div>
 </div>
@@ -6155,11 +6196,15 @@ function openCaretakerModal(id) {
     document.getElementById('ct-status').value = c.status;
     document.getElementById('ct-joined').value = c.joined_date || '';
     document.getElementById('ct-notes').value = c.notes || '';
+    document.getElementById('ct-password').value = '';
+    document.getElementById('ct-password').placeholder = 'Dejar en blanco para no cambiar';
   } else {
     document.getElementById('ct-name').value = '';
     document.getElementById('ct-status').value = 'activa';
     document.getElementById('ct-joined').value = today();
     document.getElementById('ct-notes').value = '';
+    document.getElementById('ct-password').value = '';
+    document.getElementById('ct-password').placeholder = 'Contraseña de la cuidadora';
   }
   openModal('modal-caretaker');
 }
@@ -6169,14 +6214,18 @@ function saveCaretaker() {
   const status = document.getElementById('ct-status').value;
   const joined_date = document.getElementById('ct-joined').value;
   const notes = document.getElementById('ct-notes').value.trim();
+  const password = document.getElementById('ct-password').value.trim();
   const alertEl = document.getElementById('ct-alerts');
   if (!name) { alertEl.innerHTML = '<div class="alert alert-danger">El nombre es obligatorio.</div>'; return; }
   const cts = DB.caretakers;
   if (editingCaretakerId) {
     const i = cts.findIndex(x => x.id === editingCaretakerId);
-    cts[i] = { ...cts[i], name, status, joined_date, notes };
+    const updated = { ...cts[i], name, status, joined_date, notes };
+    if (password) updated.password = password;
+    cts[i] = updated;
   } else {
-    cts.push({ id: DB.nextId(cts), name, status, joined_date, notes });
+    if (!password) { alertEl.innerHTML = '<div class="alert alert-danger">La contraseña es obligatoria para nuevas cuidadoras.</div>'; return; }
+    cts.push({ id: DB.nextId(cts), name, status, joined_date, notes, password });
   }
   DB.saveCaretakers(cts);
   closeModal('modal-caretaker');
@@ -6191,6 +6240,58 @@ function deleteCaretaker(id) {
   DB.savePhoneShifts(DB.phoneShifts.filter(p => p.caretaker_id !== id));
   DB.saveVacations(DB.vacations.filter(v => v.caretaker_id !== id));
   renderCaretakersPage();
+}
+
+// ---- Caretaker password verification ----
+let _ctPwCallback = null;
+let _ctPwCancelCb = null;
+let _ctPwCaretakerId = null;
+
+function promptCaretakerPassword(caretakerId, actionLabel, onConfirm, onCancel) {
+  const ct = DB.caretakers.find(c => c.id === caretakerId);
+  if (!ct) { onConfirm && onConfirm(); return; }
+  if (!ct.password) { onConfirm && onConfirm(); return; }
+  _ctPwCaretakerId = caretakerId;
+  _ctPwCallback = onConfirm;
+  _ctPwCancelCb = onCancel || null;
+  document.getElementById('ct-pw-label').textContent = `Contraseña de ${ct.name}`;
+  document.getElementById('ct-pw-desc').textContent = `Para "${actionLabel}", ingresa la contraseña de ${ct.name}.`;
+  document.getElementById('ct-pw-input').value = '';
+  document.getElementById('ct-pw-error').style.display = 'none';
+  openModal('modal-ct-password');
+  setTimeout(() => document.getElementById('ct-pw-input')?.focus(), 100);
+}
+
+function _ctPwConfirm() {
+  const ct = DB.caretakers.find(c => c.id === _ctPwCaretakerId);
+  const entered = document.getElementById('ct-pw-input').value;
+  if (!ct || entered === ct.password) {
+    closeModal('modal-ct-password');
+    _ctPwCallback && _ctPwCallback();
+  } else {
+    document.getElementById('ct-pw-error').style.display = 'block';
+    document.getElementById('ct-pw-input').value = '';
+    document.getElementById('ct-pw-input').focus();
+  }
+}
+
+function _ctPwCancel() {
+  closeModal('modal-ct-password');
+  _ctPwCancelCb && _ctPwCancelCb();
+}
+
+function _auditLog(caretakerId, action, data) {
+  const logs = JSON.parse(localStorage.getItem('aldea_audit_log') || '[]');
+  logs.push({
+    id: Date.now(),
+    caretaker_id: caretakerId,
+    action,
+    data,
+    datetime: new Date().toISOString(),
+    device: navigator.userAgent.slice(0, 80)
+  });
+  localStorage.setItem('aldea_audit_log', JSON.stringify(logs));
+  _sbSync('aldea_audit_log', logs);
 }
 
 // ---- Vacations ----
@@ -6227,26 +6328,29 @@ function saveVacation() {
   const alertEl = document.getElementById('vac-alerts');
   if (!caretaker_id || !start_dt || !end_dt) { alertEl.innerHTML = '<div class="alert alert-danger">Todos los campos marcados son obligatorios.</div>'; return; }
   if (end_dt <= start_dt) { alertEl.innerHTML = '<div class="alert alert-danger">El regreso debe ser posterior a la salida.</div>'; return; }
-  const vacs = DB.vacations;
-  const obj = { caretaker_id, start_dt, end_dt, status, notes };
-  if (editingVacationId) {
-    const i = vacs.findIndex(x => x.id === editingVacationId);
-    vacs[i] = { ...vacs[i], ...obj };
-  } else {
-    vacs.push({ id: DB.nextId(vacs), ...obj });
-  }
-  DB.saveVacations(vacs);
-  closeModal('modal-vacation');
-  renderCaretakersPage();
-  // Check if this vacation affects existing assignments
-  const savedVacId = editingVacationId || DB.vacations[DB.vacations.length-1]?.id;
-  const conflictAsgns = DB.assignments.filter(a =>
-    a.caretaker_id === caretaker_id &&
-    a.from_dt && a.to_dt &&
-    a.from_dt.slice(0,10) <= end_dt.slice(0,10) &&
-    a.to_dt.slice(0,10) >= start_dt.slice(0,10)
-  );
-  if (conflictAsgns.length) showVacationConflicts(savedVacId, conflictAsgns);
+  promptCaretakerPassword(caretaker_id, 'registrar vacaciones', () => {
+    const vacs = DB.vacations;
+    const obj = { caretaker_id, start_dt, end_dt, status, notes };
+    if (editingVacationId) {
+      const i = vacs.findIndex(x => x.id === editingVacationId);
+      vacs[i] = { ...vacs[i], ...obj };
+    } else {
+      vacs.push({ id: DB.nextId(vacs), ...obj });
+    }
+    DB.saveVacations(vacs);
+    _auditLog(caretaker_id, 'vacaciones', obj);
+    closeModal('modal-vacation');
+    renderCaretakersPage();
+    // Check if this vacation affects existing assignments
+    const savedVacId = editingVacationId || DB.vacations[DB.vacations.length-1]?.id;
+    const conflictAsgns = DB.assignments.filter(a =>
+      a.caretaker_id === caretaker_id &&
+      a.from_dt && a.to_dt &&
+      a.from_dt.slice(0,10) <= end_dt.slice(0,10) &&
+      a.to_dt.slice(0,10) >= start_dt.slice(0,10)
+    );
+    if (conflictAsgns.length) showVacationConflicts(savedVacId, conflictAsgns);
+  });
 }
 
 let _vacConflictAsgns = [];
@@ -6506,42 +6610,45 @@ function saveAssignmentChange() {
     return;
   }
 
-  const asgns = DB.assignments;
-  if (changingAssignmentId) {
-    const idx = asgns.findIndex(a => a.id === changingAssignmentId);
-    if (idx >= 0) {
-      const old = asgns[idx];
-      const changed = old.caretaker_id !== newCtId || old.from_dt !== fromDt || old.to_dt !== toDt;
-      if (changed) {
-        old.change_log = [...(old.change_log||[]), { from_id: old.caretaker_id, to_id: newCtId, prev_from: old.from_dt, prev_to: old.to_dt, date: nowStr(), user, reason: notes }];
+  promptCaretakerPassword(newCtId, 'guardar asignación de cuidadora', () => {
+    const asgns = DB.assignments;
+    if (changingAssignmentId) {
+      const idx = asgns.findIndex(a => a.id === changingAssignmentId);
+      if (idx >= 0) {
+        const old = asgns[idx];
+        const changed = old.caretaker_id !== newCtId || old.from_dt !== fromDt || old.to_dt !== toDt;
+        if (changed) {
+          old.change_log = [...(old.change_log||[]), { from_id: old.caretaker_id, to_id: newCtId, prev_from: old.from_dt, prev_to: old.to_dt, date: nowStr(), user, reason: notes }];
+        }
+        asgns[idx] = { ...old, caretaker_id: newCtId, from_dt: fromDt, to_dt: toDt, user, notes };
       }
-      asgns[idx] = { ...old, caretaker_id: newCtId, from_dt: fromDt, to_dt: toDt, user, notes };
+    } else {
+      asgns.push({ id: DB.nextId(asgns), dog_id: _asgnDogId, caretaker_id: newCtId, service_type: _asgnType, ref_id: _asgnRefId, from_dt: fromDt, to_dt: toDt, mode: 'parcial', user, notes, change_log: [] });
     }
-  } else {
-    asgns.push({ id: DB.nextId(asgns), dog_id: _asgnDogId, caretaker_id: newCtId, service_type: _asgnType, ref_id: _asgnRefId, from_dt: fromDt, to_dt: toDt, mode: 'parcial', user, notes, change_log: [] });
-  }
-  DB.saveAssignments(asgns);
+    DB.saveAssignments(asgns);
+    _auditLog(newCtId, 'asignacion', { fromDt, toDt, ref_id: _asgnRefId, type: _asgnType });
 
-  // Reset form for next entry
-  changingAssignmentId = null;
-  document.getElementById('asgn-form-title').textContent = 'Agregar período';
-  document.getElementById('asgn-save-btn').textContent = 'Guardar período';
-  document.getElementById('asgn-new-ct').value = '';
-  document.getElementById('asgn-alerts').innerHTML = '';
+    // Reset form for next entry
+    changingAssignmentId = null;
+    document.getElementById('asgn-form-title').textContent = 'Agregar período';
+    document.getElementById('asgn-save-btn').textContent = 'Guardar período';
+    document.getElementById('asgn-new-ct').value = '';
+    document.getElementById('asgn-alerts').innerHTML = '';
 
-  // Prefill next gap if any
-  const gaps = getAsgnGaps(_asgnRefId, _asgnType, _asgnServiceFrom, _asgnServiceTo);
-  if (gaps.length) {
-    writeDT('asgn-from-dt', gaps[0].from);
-    writeDT('asgn-to-dt', gaps[0].to);
-    alertEl.innerHTML = `<div class="alert alert-warn">✅ Período guardado. Aún hay ${gaps.length} tramo(s) sin cubrir.</div>`;
-  } else {
-    alertEl.innerHTML = '<div class="alert alert-success" style="background:var(--green-50);border:1px solid var(--green-200,#bbf7d0);border-radius:6px;padding:8px 12px;font-size:13px">✅ Toda la estadía está cubierta.</div>';
-  }
+    // Prefill next gap if any
+    const gaps = getAsgnGaps(_asgnRefId, _asgnType, _asgnServiceFrom, _asgnServiceTo);
+    if (gaps.length) {
+      writeDT('asgn-from-dt', gaps[0].from);
+      writeDT('asgn-to-dt', gaps[0].to);
+      alertEl.innerHTML = `<div class="alert alert-warn">✅ Período guardado. Aún hay ${gaps.length} tramo(s) sin cubrir.</div>`;
+    } else {
+      alertEl.innerHTML = '<div class="alert alert-success" style="background:var(--green-50);border:1px solid var(--green-200,#bbf7d0);border-radius:6px;padding:8px 12px;font-size:13px">✅ Toda la estadía está cubierta.</div>';
+    }
 
-  renderAsgnTimeline();
-  renderStaysTable();
-  renderDaycareTable();
+    renderAsgnTimeline();
+    renderStaysTable();
+    renderDaycareTable();
+  });
 }
 
 // ---- Feeding shifts ----
@@ -6584,17 +6691,20 @@ function saveFeedingShift() {
     alertEl.innerHTML = '<div class="alert alert-danger">⚠️ Esta cuidadora está de vacaciones en esa fecha.</div>';
     return;
   }
-  const shifts = DB.feedingShifts;
-  const obj = { date, shift, caretaker_id, dog_count, confirmed, notes };
-  if (editingFeedingId) {
-    const i = shifts.findIndex(x => x.id === editingFeedingId);
-    shifts[i] = { ...shifts[i], ...obj };
-  } else {
-    shifts.push({ id: DB.nextId(shifts), ...obj });
-  }
-  DB.saveFeedingShifts(shifts);
-  closeModal('modal-feeding');
-  renderFeedingPage();
+  promptCaretakerPassword(caretaker_id, 'registrar turno de alimentación', () => {
+    const shifts = DB.feedingShifts;
+    const obj = { date, shift, caretaker_id, dog_count, confirmed, notes };
+    if (editingFeedingId) {
+      const i = shifts.findIndex(x => x.id === editingFeedingId);
+      shifts[i] = { ...shifts[i], ...obj };
+    } else {
+      shifts.push({ id: DB.nextId(shifts), ...obj });
+    }
+    DB.saveFeedingShifts(shifts);
+    _auditLog(caretaker_id, 'turno_alimentacion', obj);
+    closeModal('modal-feeding');
+    renderFeedingPage();
+  });
 }
 
 function deleteFeedingShift(id) {
@@ -6646,17 +6756,20 @@ function savePhoneShift() {
     alertEl.innerHTML = '<div class="alert alert-danger">⚠️ Esta cuidadora está de vacaciones en esa fecha.</div>';
     return;
   }
-  const shifts = DB.phoneShifts;
-  const obj = { date, caretaker_id, notes };
-  if (editingPhoneId) {
-    const i = shifts.findIndex(x => x.id === editingPhoneId);
-    shifts[i] = { ...shifts[i], ...obj };
-  } else {
-    shifts.push({ id: DB.nextId(shifts), ...obj });
-  }
-  DB.savePhoneShifts(shifts);
-  closeModal('modal-phone');
-  renderPhonePage();
+  promptCaretakerPassword(caretaker_id, 'registrar turno de teléfono', () => {
+    const shifts = DB.phoneShifts;
+    const obj = { date, caretaker_id, notes };
+    if (editingPhoneId) {
+      const i = shifts.findIndex(x => x.id === editingPhoneId);
+      shifts[i] = { ...shifts[i], ...obj };
+    } else {
+      shifts.push({ id: DB.nextId(shifts), ...obj });
+    }
+    DB.savePhoneShifts(shifts);
+    _auditLog(caretaker_id, 'turno_telefono', obj);
+    closeModal('modal-phone');
+    renderPhonePage();
+  });
 }
 
 function deletePhoneShift(id) {
@@ -7326,8 +7439,35 @@ const DB_medLogs = {
   save(arr) { localStorage.setItem(DB_MED_LOGS_KEY, JSON.stringify(arr)); }
 };
 
-// Iniciar Supabase y luego la app
-initSupabase().then(() => init()).catch(() => init());
+// ===================== ACCESO =====================
+const _ACCESS_KEY = 'aldea3727836';
+const _SESSION_KEY = 'aldea_session';
+
+function checkLogin() {
+  const val = document.getElementById('login-input').value;
+  if (val === _ACCESS_KEY) {
+    sessionStorage.setItem(_SESSION_KEY, '1');
+    document.getElementById('login-screen').style.display = 'none';
+    startApp();
+  } else {
+    document.getElementById('login-error').style.display = 'block';
+    document.getElementById('login-input').value = '';
+    document.getElementById('login-input').focus();
+  }
+}
+
+function startApp() {
+  initSupabase().then(() => init()).catch(() => init());
+}
+
+// Al cargar: verificar sesión
+if (sessionStorage.getItem(_SESSION_KEY) === '1') {
+  document.getElementById('login-screen').style.display = 'none';
+  startApp();
+} else {
+  document.getElementById('login-screen').style.display = 'flex';
+  setTimeout(() => document.getElementById('login-input')?.focus(), 100);
+}
 
 function getMedLogKey(dogId, medName, medTime, date) {
   return `${dogId}|${medName}|${medTime}|${date}`;
