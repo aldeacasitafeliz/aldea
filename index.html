@@ -335,17 +335,23 @@ tr:hover td { background: var(--gray-50); }
   }
   .sidebar.open { left: 0; }
 
-  /* Main fills all space and is the scroll container */
+  /* Main fills all space and is the scroll container.
+     padding-bottom + box-sizing:border-box makes the scrollable area
+     end exactly at the top of the fixed bottom nav — content never
+     slides underneath it, so nothing gets hidden. */
   .main {
     height: 100dvh;
     height: 100vh;
+    box-sizing: border-box;
+    /* Reserve space for fixed bottom nav (≈60px) + home indicator */
+    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Content padding adjusts for bottom nav + safe area */
-  .content { padding: calc(env(safe-area-inset-top, 0px) + 16px) 14px calc(80px + env(safe-area-inset-bottom, 0px)); }
+  /* Content padding: only normal spacing, no extra bottom needed */
+  .content { padding: 16px 14px 24px; }
 
   /* Topbar: respect notch / Dynamic Island */
   .topbar {
