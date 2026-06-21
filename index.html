@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Aldea — Sistema de Gestión</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -264,6 +264,8 @@ tr:hover td { background: var(--gray-50); }
   z-index: 500;
   padding: 0;
   border-top: 1px solid rgba(255,255,255,0.1);
+  /* Extend background under home indicator */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .bottom-nav-scroll {
   display: flex;
@@ -342,11 +344,15 @@ tr:hover td { background: var(--gray-50); }
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Content padding adjusts for bottom nav */
-  .content { padding: 16px 14px 80px; }
+  /* Content padding adjusts for bottom nav + safe area */
+  .content { padding: calc(env(safe-area-inset-top, 0px) + 16px) 14px calc(80px + env(safe-area-inset-bottom, 0px)); }
 
-  /* Topbar */
-  .topbar { padding: 12px 16px; }
+  /* Topbar: respect notch / Dynamic Island */
+  .topbar {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 12px;
+    padding-left: max(16px, env(safe-area-inset-left, 16px));
+    padding-right: max(16px, env(safe-area-inset-right, 16px));
+  }
   .topbar-title { font-size: 15px; }
 
   /* Show mobile controls */
@@ -427,9 +433,17 @@ tr:hover td { background: var(--gray-50); }
     padding: 12px 16px;
     font-size: 14px;
   }
-  /* Bottom nav scroll */
+  /* Bottom nav scroll: respect side safe areas (landscape notch) */
   .bottom-nav-scroll {
     -webkit-overflow-scrolling: touch;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  /* Side padding for content in landscape with notch */
+  .content {
+    padding-left: max(14px, calc(env(safe-area-inset-left, 0px) + 14px));
+    padding-right: max(14px, calc(env(safe-area-inset-right, 0px) + 14px));
   }
 
   /* Visual grid: reduce dog col width */
