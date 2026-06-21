@@ -1386,7 +1386,7 @@ tr:hover td { background: var(--gray-50); }
             <input type="radio" name="stay-open-ended" value="si" onchange="toggleStayOpenEnded()"> Sin fecha de salida
           </label>
         </div>
-        <input type="date" id="stay-checkout" onchange="updateStayPreview();refreshStayCtSelect()">
+        <input type="date" id="stay-checkout" placeholder="Agregar fecha" onchange="updateStayPreview();refreshStayCtSelect()">
       </div>
     </div><!-- /form-grid step1 -->
     </div><!-- /stay-step-1 -->
@@ -1514,7 +1514,7 @@ tr:hover td { background: var(--gray-50); }
             <div class="form-group">
               <label>Desde</label>
               <div style="display:grid;grid-template-columns:1fr 44px 8px 44px 62px;gap:4px;align-items:center">
-                <input type="date" id="stay-asgn-from-date" class="form-control">
+                <input type="date" id="stay-asgn-from-date" class="form-control" placeholder="Agregar fecha">
                 <input type="number" id="stay-asgn-from-h" min="1" max="12" value="8" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTHour(this)">
                 <span style="text-align:center;font-weight:700;line-height:34px">:</span>
                 <input type="number" id="stay-asgn-from-m" min="0" max="59" value="0" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTMin(this)">
@@ -1527,7 +1527,7 @@ tr:hover td { background: var(--gray-50); }
             <div class="form-group">
               <label>Hasta</label>
               <div style="display:grid;grid-template-columns:1fr 44px 8px 44px 62px;gap:4px;align-items:center">
-                <input type="date" id="stay-asgn-to-date" class="form-control">
+                <input type="date" id="stay-asgn-to-date" class="form-control" placeholder="Agregar fecha">
                 <input type="number" id="stay-asgn-to-h" min="1" max="12" value="8" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTHour(this)">
                 <span style="text-align:center;font-weight:700;line-height:34px">:</span>
                 <input type="number" id="stay-asgn-to-m" min="0" max="59" value="0" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTMin(this)">
@@ -1890,7 +1890,7 @@ tr:hover td { background: var(--gray-50); }
       <div class="form-group">
         <label>Salida (fecha y hora) *</label>
         <div style="display:grid;grid-template-columns:1fr 44px 8px 44px 62px;gap:4px;align-items:center">
-          <input type="date" id="vac-start-date" class="form-control">
+          <input type="date" id="vac-start-date" class="form-control" placeholder="Agregar fecha">
           <input type="number" id="vac-start-h" min="1" max="12" value="8" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTHour(this)">
           <span style="text-align:center;font-weight:700;line-height:34px">:</span>
           <input type="number" id="vac-start-m" min="0" max="59" value="0" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTMin(this)">
@@ -1903,7 +1903,7 @@ tr:hover td { background: var(--gray-50); }
       <div class="form-group">
         <label>Regreso (fecha y hora) *</label>
         <div style="display:grid;grid-template-columns:1fr 44px 8px 44px 62px;gap:4px;align-items:center">
-          <input type="date" id="vac-end-date" class="form-control">
+          <input type="date" id="vac-end-date" class="form-control" placeholder="Agregar fecha">
           <input type="number" id="vac-end-h" min="1" max="12" value="8" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTHour(this)">
           <span style="text-align:center;font-weight:700;line-height:34px">:</span>
           <input type="number" id="vac-end-m" min="0" max="59" value="0" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTMin(this)">
@@ -2208,6 +2208,8 @@ const _MC_SKIP = ['vg-', 'comp-', 'calendar', 'report', 'export'];
 
 function _applyMobileCards() {
   if (window.innerWidth > 768) return;
+  // Disconnect observer while we modify DOM to prevent recursive triggering
+  if (_mcObserver) _mcObserver.disconnect();
   document.querySelectorAll('.content table, .card table').forEach(table => {
     if (table.classList.contains('mc-done')) return;
     // Skip excluded tables
@@ -2236,20 +2238,42 @@ function _applyMobileCards() {
       });
     });
   });
+  // Reconnect observer after all DOM changes are done
+  requestAnimationFrame(() => {
+    const content = document.querySelector('.content');
+    if (content && _mcObserver) _mcObserver.observe(content, { childList: true, subtree: true });
+    _fixDeleteBtns();
+  });
 }
 
-// Observe DOM changes in .content to auto-apply after every render
+// Replace bare ✕ text in red (btn-danger) buttons with "Eliminar"
+function _fixDeleteBtns() {
+  document.querySelectorAll('.btn-danger').forEach(btn => {
+    if (btn.textContent.trim() === '✕') btn.textContent = 'Eliminar';
+  });
+}
+
+// Observe DOM changes in .content to auto-apply after every render.
+// KEY: only reset mc-done on tables inside *newly added* nodes, not all tables.
+// This prevents a recursive loop where _applyMobileCards modifying td.innerHTML
+// triggers the observer again, freezing scroll on iOS.
 let _mcObserver = null;
 function _startMobileObserver() {
   if (!window.MutationObserver || window.innerWidth > 768) return;
   const content = document.querySelector('.content');
   if (!content || _mcObserver) return;
-  _mcObserver = new MutationObserver(() => {
-    // Reset mc-done flags so newly rendered tables get processed
-    document.querySelectorAll('table.mc-done').forEach(t => {
-      t.classList.remove('mc-done');
+  _mcObserver = new MutationObserver((mutations) => {
+    let needsWork = false;
+    mutations.forEach(m => {
+      m.addedNodes.forEach(node => {
+        if (node.nodeType !== 1) return;
+        needsWork = true;
+        // Only reset tables that are descendants of the newly added node
+        if (node.tagName === 'TABLE') { node.classList.remove('mc-done', 'mc-table'); }
+        node.querySelectorAll('table').forEach(t => t.classList.remove('mc-done', 'mc-table'));
+      });
     });
-    requestAnimationFrame(_applyMobileCards);
+    if (needsWork) requestAnimationFrame(_applyMobileCards);
   });
   _mcObserver.observe(content, { childList: true, subtree: true });
 }
@@ -2545,7 +2569,7 @@ function showPage(id) {
   if (id === 'salidas') renderSalidasPage();
   if (id === 'export') { setExportPeriod('month'); updateExportPreview(); renderExportHistory(); }
   // Apply mobile card transformation after render
-  requestAnimationFrame(_applyMobileCards);
+  requestAnimationFrame(() => { _applyMobileCards(); _fixDeleteBtns(); });
 }
 
 // ===================== MODALS =====================
