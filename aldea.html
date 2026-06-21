@@ -8692,7 +8692,7 @@ function renderMedsPage() {
   // Dogs present on this date (hospedaje + daycare) that have medications
   const hostedIds = DB.stays.filter(s =>
     s.service_type === 'hospedaje' && s.status !== 'cancelado' &&
-    s.check_in_date <= d && s.check_out_date >= d
+    s.check_in_date <= d && (s.open_ended ? true : s.check_out_date >= d)
   ).map(s => String(s.dog_id));
   const dcIds = DB.daycares.filter(dc => dc.date === d).map(dc => String(dc.dog_id));
   const presentIdSet = new Set([...hostedIds, ...dcIds]);
