@@ -347,6 +347,7 @@ tr:hover td { background: var(--gray-50); }
           quede 24px sobre el nav en cualquier dispositivo
   ──────────────────────────────────────────────────────────────────────── */
   .main {
+    display: block; /* anula display:flex del desktop — en mobile no hay sidebar */
     height: 100dvh;
     height: 100vh;
     overflow-y: scroll;
@@ -359,7 +360,13 @@ tr:hover td { background: var(--gray-50); }
   /* Bottom padding on content ensures last element clears fixed nav (56px) + 24px gap + safe-area */
   .content {
     padding: 16px 14px calc(80px + env(safe-area-inset-bottom, 0px));
-    overflow-x: hidden; /* horizontal clip here, not on scroll container */
+    overflow-x: hidden;
+  }
+
+  /* Tarjetas con overflow:hidden inline crean contextos de scroll iOS que roban gestos */
+  .card[style*="overflow:hidden"],
+  .card[style*="overflow: hidden"] {
+    overflow: visible !important;
   }
 
   /* Topbar: respect notch / Dynamic Island */
