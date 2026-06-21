@@ -8734,7 +8734,6 @@ function renderMedsPage() {
   const pendingCount = rows.filter(r => r.status === 'pendiente').length;
   const doneCount    = rows.filter(r => r.status === 'administrada').length;
 
-  const el = document.getElementById('meds-content');
   if (!rows.length) {
     el.innerHTML = `<div class="alert alert-success" style="margin-top:8px">✓ Sin medicamentos pendientes para el ${fmtDate(d)}.</div>`;
     updateMedsAlertDot();
