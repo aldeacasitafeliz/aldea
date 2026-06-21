@@ -374,14 +374,26 @@ tr:hover td { background: var(--gray-50); }
   /* Cards: full width */
   .card { padding: 12px 14px; }
 
-  /* Modals: full screen */
-  .modal-overlay { padding: 0; align-items: flex-end; }
+  /* Modals: full-screen sheet from bottom */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+    /* Sit above browser chrome on iOS */
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
   .modal {
     max-width: 100%;
-    max-height: 92dvh;
-    max-height: 92vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    padding: 20px 16px 24px;
+    /* Use dvh so iOS shrinks when address bar appears */
+    max-height: 88dvh;
+    max-height: 88vh;
+    border-radius: 16px 16px 0 0;
+    padding: 20px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Inline 2-col grids inside modals become 1 col */
+  .modal [style*="grid-template-columns:1fr 1fr"],
+  .modal [style*="grid-template-columns: 1fr 1fr"] {
+    grid-template-columns: 1fr !important;
   }
 
   /* Modal footer: stack buttons */
@@ -1175,11 +1187,11 @@ tr:hover td { background: var(--gray-50); }
       </div>
       <div class="form-group">
         <label>Fecha de salida</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt)">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
             <input type="radio" name="stay-open-ended" value="no" checked onchange="toggleStayOpenEnded()"> Fecha conocida
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt)">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
             <input type="radio" name="stay-open-ended" value="si" onchange="toggleStayOpenEnded()"> Sin fecha de salida
           </label>
         </div>
