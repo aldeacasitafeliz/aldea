@@ -8699,13 +8699,8 @@ function renderMedsPage() {
   const allWithMeds = DB.dogs.filter(dog => Array.isArray(dog.medications) && dog.medications.length > 0);
   const targetDogs = allWithMeds.filter(dog => presentIdSet.has(String(dog.id)));
 
-  // DEBUG: remove after fix confirmed
   if (!targetDogs.length) {
-    el.innerHTML = `<div style="padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;font-size:12px;margin-top:8px">
-      <strong>Debug:</strong> perros en DB: ${DB.dogs.length} · con meds: ${allWithMeds.map(d=>d.name+'[id='+d.id+']').join(', ')||'ninguno'} ·
-      presentes hoy IDs: [${[...presentIdSet].join(',')}] · fecha: ${d}<br>
-      stays hoy: ${DB.stays.filter(s=>s.status!=='cancelado'&&s.check_in_date<=d&&s.check_out_date>=d).map(s=>'id='+s.dog_id+'('+s.check_in_date+'→'+s.check_out_date+')').join(', ')||'ninguno'}
-    </div>`;
+    el.innerHTML = `<div class="alert alert-success" style="margin-top:8px">✓ Sin medicamentos pendientes para perros presentes el ${fmtDate(d)}.</div>`;
     updateMedsAlertDot();
     return;
   }
