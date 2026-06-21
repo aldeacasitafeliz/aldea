@@ -343,15 +343,15 @@ tr:hover td { background: var(--gray-50); }
     height: 100dvh;
     height: 100vh;
     box-sizing: border-box;
-    /* Reserve space for fixed bottom nav (≈60px) + home indicator */
-    padding-bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+    /* Reserve space for fixed bottom nav (≈56px) + gap (24px) + safe area */
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Content padding: only normal spacing, no extra bottom needed */
-  .content { padding: 16px 14px 24px; }
+  /* Content padding: extra bottom so last card breathes above the padding area */
+  .content { padding: 16px 14px 20px; }
 
   /* Topbar: respect notch / Dynamic Island */
   .topbar {
@@ -1574,41 +1574,46 @@ tr:hover td { background: var(--gray-50); }
 <!-- Modal daycare -->
 <div class="modal-overlay" id="modal-daycare">
   <div class="modal">
-    <div class="modal-title">Registrar daycare</div>
-    <div id="daycare-alerts"></div>
-    <div class="form-grid">
-      <div class="form-group span2">
-        <label>Perro *</label>
-        <select id="dc-dog">
-          <option value="">— Seleccionar perro —</option>
-        </select>
+    <div class="modal-title" id="dc-modal-title">Registrar daycare</div>
+    <!-- Wizard progress (mobile only) -->
+    <div id="dc-wizard-header" style="display:none;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span id="dc-wizard-step-label" style="font-size:13px;font-weight:600;color:var(--green-800)">Paso 1 de 3</span>
+        <span id="dc-wizard-step-name" style="font-size:12px;color:var(--text-muted)"></span>
       </div>
-      <div class="form-group">
-        <label>Fecha *</label>
-        <input type="date" id="dc-date" onchange="renderDcHolidayAlert()">
-      </div>
-      <div class="form-group">
-        <label>Tarifa (S/) *</label>
-        <input type="number" id="dc-rate" placeholder="0" min="0" step="1">
-      </div>
-      <div class="form-group span2">
-        <label>Observaciones</label>
-        <textarea id="dc-notes" rows="2"></textarea>
-      </div>
-      <div class="form-group">
-        <label>Cuidadora asignada</label>
-        <select id="dc-caretaker">
-          <option value="">— Sin asignar —</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Asignado por</label>
-        <input type="text" id="dc-asgn-user" placeholder="Nombre">
+      <div style="display:flex;gap:4px">
+        <div id="dcwp-1" style="height:4px;flex:1;border-radius:2px;background:var(--green-600);transition:background 0.2s"></div>
+        <div id="dcwp-2" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
+        <div id="dcwp-3" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
       </div>
     </div>
-    <div id="dc-holiday-alert" style="display:none;background:var(--amber-50);border:1px solid var(--amber-200);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--amber-800);margin-top:4px"></div>
-    <div class="form-grid" style="margin-top:10px">
-      <div class="form-group span2">
+    <div id="daycare-alerts"></div>
+    <!-- STEP 1: Perro y fecha -->
+    <div id="dc-step-1">
+      <div class="form-grid">
+        <div class="form-group span2">
+          <label>Perro *</label>
+          <select id="dc-dog">
+            <option value="">— Seleccionar perro —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Fecha *</label>
+          <input type="date" id="dc-date" onchange="renderDcHolidayAlert()">
+        </div>
+        <div class="form-group">
+          <label>Tarifa (S/) *</label>
+          <input type="number" id="dc-rate" placeholder="0" min="0" step="1">
+        </div>
+        <div class="form-group span2">
+          <label>Observaciones</label>
+          <textarea id="dc-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <!-- STEP 2: Pagos -->
+    <div id="dc-step-2">
+      <div class="form-group">
         <label>¿Hubo pago adelantado?</label>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
@@ -1619,13 +1624,13 @@ tr:hover td { background: var(--gray-50); }
           </label>
         </div>
       </div>
-      <div id="dc-advance-section" style="display:none;grid-column:span 2">
+      <div id="dc-advance-section" style="display:none;margin-bottom:12px">
         <div class="form-group">
           <label>Monto adelantado (S/)</label>
           <input type="number" id="dc-advance-amount" placeholder="0" min="0" step="1">
         </div>
       </div>
-      <div class="form-group span2">
+      <div class="form-group">
         <label>¿Se aplicará descuento?</label>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
@@ -1636,7 +1641,7 @@ tr:hover td { background: var(--gray-50); }
           </label>
         </div>
       </div>
-      <div id="dc-discount-section" style="display:none;grid-column:span 2">
+      <div id="dc-discount-section" style="display:none;margin-bottom:12px">
         <div class="form-grid" style="margin:0">
           <div class="form-group">
             <label>Porcentaje de descuento (%)</label>
@@ -1647,7 +1652,7 @@ tr:hover td { background: var(--gray-50); }
           </div>
         </div>
       </div>
-      <div class="form-group span2">
+      <div class="form-group">
         <label>¿Ingresar monto manualmente?</label>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
@@ -1658,7 +1663,7 @@ tr:hover td { background: var(--gray-50); }
           </label>
         </div>
       </div>
-      <div id="dc-manual-section" style="display:none;grid-column:span 2">
+      <div id="dc-manual-section" style="display:none;margin-bottom:12px">
         <div class="form-group">
           <label>Monto total a cobrar (S/) *</label>
           <input type="number" id="dc-manual-amount" placeholder="0.00" min="0" step="0.01" style="font-size:16px;font-weight:600">
@@ -1666,7 +1671,33 @@ tr:hover td { background: var(--gray-50); }
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Este monto reemplaza cualquier cálculo automático.</div>
       </div>
     </div>
-    <div class="modal-footer">
+    <!-- STEP 3: Cuidadora -->
+    <div id="dc-step-3">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Cuidadora asignada</label>
+          <select id="dc-caretaker">
+            <option value="">— Sin asignar —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Asignado por</label>
+          <input type="text" id="dc-asgn-user" placeholder="Nombre">
+        </div>
+      </div>
+      <div id="dc-holiday-alert" style="display:none;background:var(--amber-50);border:1px solid var(--amber-200);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--amber-800);margin-top:4px"></div>
+    </div>
+    <!-- Wizard footer (mobile only) -->
+    <div id="dc-wizard-footer" style="display:none">
+      <div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <button id="dc-wiz-back" class="btn btn-secondary" style="flex:1" onclick="_dcWizStep(-1)">← Anterior</button>
+        <button id="dc-wiz-next" class="btn btn-primary" style="flex:1" onclick="_dcWizStep(1)">Siguiente →</button>
+        <button id="dc-wiz-save" class="btn btn-primary" style="flex:1;display:none" onclick="saveDaycare()">✓ Guardar</button>
+      </div>
+      <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;margin-top:8px;padding:4px;cursor:pointer" onclick="closeModal('modal-daycare')">Cancelar</button>
+    </div>
+    <!-- Desktop footer -->
+    <div class="modal-footer" id="dc-desktop-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-daycare')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveDaycare()">Guardar</button>
     </div>
@@ -5031,7 +5062,60 @@ function openDaycareModal() {
   const dcHolAlert = document.getElementById('dc-holiday-alert');
   if (dcHolAlert) dcHolAlert.style.display = 'none';
   openModal('modal-daycare');
+  if (window.innerWidth <= 768) _initDcWizard();
+  else _dcDesktopMode();
 }
+
+// ── Daycare wizard (mobile only) ───────────────────────────────────────────
+let _dcWizCurrent = 1;
+const _DC_WIZ_NAMES = ['', 'Perro y fecha', 'Pagos', 'Cuidadora'];
+const _DC_WIZ_TOTAL = 3;
+
+function _initDcWizard() {
+  _dcWizCurrent = 1;
+  document.getElementById('dc-wizard-header').style.display = 'block';
+  document.getElementById('dc-wizard-footer').style.display = 'block';
+  document.getElementById('dc-desktop-footer').style.display = 'none';
+  _dcWizRender();
+}
+
+function _dcDesktopMode() {
+  [1, 2, 3].forEach(n => { const el = document.getElementById('dc-step-' + n); if (el) el.style.display = ''; });
+  document.getElementById('dc-wizard-header').style.display = 'none';
+  document.getElementById('dc-wizard-footer').style.display = 'none';
+  document.getElementById('dc-desktop-footer').style.display = '';
+}
+
+function _dcWizRender() {
+  const cur = _dcWizCurrent;
+  [1, 2, 3].forEach(n => {
+    const el = document.getElementById('dc-step-' + n);
+    if (el) el.style.display = n === cur ? '' : 'none';
+  });
+  [1, 2, 3].forEach(n => {
+    const bar = document.getElementById('dcwp-' + n);
+    if (bar) bar.style.background = n <= cur ? 'var(--green-600)' : 'var(--gray-200)';
+  });
+  document.getElementById('dc-wizard-step-label').textContent = `Paso ${cur} de ${_DC_WIZ_TOTAL}`;
+  document.getElementById('dc-wizard-step-name').textContent = _DC_WIZ_NAMES[cur] || '';
+  document.getElementById('dc-wiz-back').style.display = cur > 1 ? '' : 'none';
+  document.getElementById('dc-wiz-next').style.display = cur < _DC_WIZ_TOTAL ? '' : 'none';
+  document.getElementById('dc-wiz-save').style.display = cur === _DC_WIZ_TOTAL ? '' : 'none';
+  const modal = document.querySelector('#modal-daycare .modal');
+  if (modal) modal.scrollTop = 0;
+}
+
+function _dcWizStep(dir) {
+  const next = _dcWizCurrent + dir;
+  if (next < 1 || next > _DC_WIZ_TOTAL) return;
+  if (dir > 0 && _dcWizCurrent === 1) {
+    if (!document.getElementById('dc-dog').value) { alert('Seleccioná un perro primero.'); return; }
+    if (!document.getElementById('dc-date').value) { alert('Ingresá la fecha del daycare.'); return; }
+  }
+  _dcWizCurrent = next;
+  _dcWizRender();
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 let _editDaycareId = null;
 function openEditDaycare(id) {
@@ -5075,6 +5159,8 @@ function openEditDaycare(id) {
   const dcHolAlert = document.getElementById('dc-holiday-alert');
   if (dcHolAlert) dcHolAlert.style.display = 'none';
   openModal('modal-daycare');
+  if (window.innerWidth <= 768) _initDcWizard();
+  else _dcDesktopMode();
 }
 
 function saveDaycare() {
