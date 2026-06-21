@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aldea — Sistema de Gestión</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root {
   --green-50: #EAF3DE; --green-100: #C0DD97; --green-200: #97C459;
@@ -1626,6 +1627,62 @@ tr:hover td { background: var(--gray-50); }
 
 <script>
 // ===================== DATA LAYER =====================
+// ===================== SUPABASE =====================
+const SUPABASE_URL = 'https://fjipqzoxwqaafgypznao.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_qNJyOaH629ZJHsoHzQsmxg_R-W3t3vC';
+let _sb = null;
+
+const SYNC_KEYS = [
+  'aldea_dogs','aldea_stays','aldea_daycares','aldea_payments','aldea_incidents',
+  'aldea_conflicts','aldea_caretakers','aldea_vacations','aldea_assignments',
+  'aldea_feeding','aldea_phone','aldea_holidays','aldea_restaurant','aldea_med_logs'
+];
+
+async function _sbSync(key, value) {
+  if (!_sb) return;
+  try {
+    await _sb.from('aldea_store').upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  } catch(e) { console.warn('Supabase sync error', e); }
+}
+
+async function initSupabase() {
+  try {
+    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Load all data from Supabase into localStorage
+    const { data } = await _sb.from('aldea_store').select('key, value');
+    if (data && data.length) {
+      data.forEach(row => localStorage.setItem(row.key, JSON.stringify(row.value)));
+    }
+    // Real-time subscription
+    _sb.channel('aldea_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'aldea_store' }, payload => {
+        if (payload.new && payload.new.key) {
+          localStorage.setItem(payload.new.key, JSON.stringify(payload.new.value));
+          _refreshCurrentPage();
+        }
+      }).subscribe();
+  } catch(e) { console.warn('Supabase init error', e); }
+}
+
+function _refreshCurrentPage() {
+  const active = document.querySelector('.page.active');
+  if (!active) return;
+  const id = active.id.replace('page-','');
+  if (id === 'dashboard') renderDashboard();
+  else if (id === 'dogs') renderDogsTable();
+  else if (id === 'stays') renderStaysTable();
+  else if (id === 'daycares') renderDaycaresTable();
+  else if (id === 'salidas') renderSalidasPage();
+  else if (id === 'meds') renderMedsPage();
+  else if (id === 'allergies') renderAllergiesPage();
+  else if (id === 'incidents') renderIncidentsTable();
+  else if (id === 'income') renderIncome();
+  else if (id === 'caretakers') renderCaretakersPage();
+  else if (id === 'feeding') renderFeedingPage();
+  else if (id === 'phone') renderPhonePage();
+  else if (id === 'restaurant') renderRestaurantPage();
+}
+
 const DB = {
   get dogs() { return JSON.parse(localStorage.getItem('aldea_dogs') || '[]'); },
   get stays() { return JSON.parse(localStorage.getItem('aldea_stays') || '[]'); },
@@ -1638,21 +1695,21 @@ const DB = {
   get assignments() { return JSON.parse(localStorage.getItem('aldea_assignments') || '[]'); },
   get feedingShifts() { return JSON.parse(localStorage.getItem('aldea_feeding') || '[]'); },
   get phoneShifts() { return JSON.parse(localStorage.getItem('aldea_phone') || '[]'); },
-  saveDogs(d) { localStorage.setItem('aldea_dogs', JSON.stringify(d)); },
-  saveStays(d) { localStorage.setItem('aldea_stays', JSON.stringify(d)); },
-  saveDaycares(d) { localStorage.setItem('aldea_daycares', JSON.stringify(d)); },
-  savePayments(d) { localStorage.setItem('aldea_payments', JSON.stringify(d)); },
+  saveDogs(d) { localStorage.setItem('aldea_dogs', JSON.stringify(d)); _sbSync('aldea_dogs', d); },
+  saveStays(d) { localStorage.setItem('aldea_stays', JSON.stringify(d)); _sbSync('aldea_stays', d); },
+  saveDaycares(d) { localStorage.setItem('aldea_daycares', JSON.stringify(d)); _sbSync('aldea_daycares', d); },
+  savePayments(d) { localStorage.setItem('aldea_payments', JSON.stringify(d)); _sbSync('aldea_payments', d); },
   get holidays() { try { return JSON.parse(localStorage.getItem('aldea_holidays')||'[]'); } catch(e){return[];} },
-  saveHolidays(d) { localStorage.setItem('aldea_holidays', JSON.stringify(d)); },
+  saveHolidays(d) { localStorage.setItem('aldea_holidays', JSON.stringify(d)); _sbSync('aldea_holidays', d); },
   get restaurant() { try { return JSON.parse(localStorage.getItem('aldea_restaurant')||'[]'); } catch(e){return[];} },
-  saveRestaurant(d) { localStorage.setItem('aldea_restaurant', JSON.stringify(d)); },
-  saveIncidents(d) { localStorage.setItem('aldea_incidents', JSON.stringify(d)); },
-  saveConflicts(d) { localStorage.setItem('aldea_conflicts', JSON.stringify(d)); },
-  saveCaretakers(d) { localStorage.setItem('aldea_caretakers', JSON.stringify(d)); },
-  saveVacations(d) { localStorage.setItem('aldea_vacations', JSON.stringify(d)); },
-  saveAssignments(d) { localStorage.setItem('aldea_assignments', JSON.stringify(d)); },
-  saveFeedingShifts(d) { localStorage.setItem('aldea_feeding', JSON.stringify(d)); },
-  savePhoneShifts(d) { localStorage.setItem('aldea_phone', JSON.stringify(d)); },
+  saveRestaurant(d) { localStorage.setItem('aldea_restaurant', JSON.stringify(d)); _sbSync('aldea_restaurant', d); },
+  saveIncidents(d) { localStorage.setItem('aldea_incidents', JSON.stringify(d)); _sbSync('aldea_incidents', d); },
+  saveConflicts(d) { localStorage.setItem('aldea_conflicts', JSON.stringify(d)); _sbSync('aldea_conflicts', d); },
+  saveCaretakers(d) { localStorage.setItem('aldea_caretakers', JSON.stringify(d)); _sbSync('aldea_caretakers', d); },
+  saveVacations(d) { localStorage.setItem('aldea_vacations', JSON.stringify(d)); _sbSync('aldea_vacations', d); },
+  saveAssignments(d) { localStorage.setItem('aldea_assignments', JSON.stringify(d)); _sbSync('aldea_assignments', d); },
+  saveFeedingShifts(d) { localStorage.setItem('aldea_feeding', JSON.stringify(d)); _sbSync('aldea_feeding', d); },
+  savePhoneShifts(d) { localStorage.setItem('aldea_phone', JSON.stringify(d)); _sbSync('aldea_phone', d); },
   getDog(id) { return this.dogs.find(d => d.id === id); },
   nextId(arr) { return arr.length ? Math.max(...arr.map(x => x.id)) + 1 : 1; }
 };
@@ -7269,7 +7326,8 @@ const DB_medLogs = {
   save(arr) { localStorage.setItem(DB_MED_LOGS_KEY, JSON.stringify(arr)); }
 };
 
-init();
+// Iniciar Supabase y luego la app
+initSupabase().then(() => init()).catch(() => init());
 
 function getMedLogKey(dogId, medName, medTime, date) {
   return `${dogId}|${medName}|${medTime}|${date}`;
