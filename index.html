@@ -333,8 +333,14 @@ tr:hover td { background: var(--gray-50); }
   }
   .sidebar.open { left: 0; }
 
-  /* Main fills all space */
-  .main { height: 100dvh; height: 100vh; overflow-y: auto; }
+  /* Main fills all space and is the scroll container */
+  .main {
+    height: 100dvh;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
 
   /* Content padding adjusts for bottom nav */
   .content { padding: 16px 14px 80px; }
@@ -429,8 +435,9 @@ tr:hover td { background: var(--gray-50); }
   /* Visual grid: reduce dog col width */
   .vg-dog-col, .vg-dog-name { width: 90px; }
 
-  /* Tables in cards scroll horizontally */
-  .card { overflow-x: auto; }
+  /* Tables need their own scroll wrapper, not the card itself */
+  .table-scroll-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 0; } /* reset — mc-table handles layout */
 
   /* ---- Override ALL inline max-width/width on form elements ---- */
   input, select, textarea {
@@ -473,6 +480,9 @@ tr:hover td { background: var(--gray-50); }
 
   /* Row actions: smaller */
   td .btn-sm { padding: 5px 8px; font-size: 11px; }
+
+  /* Override inline white-space:nowrap so action buttons wrap */
+  table.mc-table td { white-space: normal !important; }
 
   /* ---- TABLE → CARD TRANSFORMATION ---- */
   table.mc-table { display: block !important; width: 100%; }
@@ -1318,7 +1328,21 @@ tr:hover td { background: var(--gray-50); }
 <div class="modal-overlay" id="modal-stay">
   <div class="modal">
     <div class="modal-title" id="stay-modal-title">Nueva estadía</div>
+    <!-- Wizard progress (mobile only) -->
+    <div id="stay-wizard-header" style="display:none;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span id="stay-wizard-step-label" style="font-size:13px;font-weight:600;color:var(--green-800)">Paso 1 de 3</span>
+        <span id="stay-wizard-step-name" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div style="display:flex;gap:4px">
+        <div id="swp-1" style="height:4px;flex:1;border-radius:2px;background:var(--green-600);transition:background 0.2s"></div>
+        <div id="swp-2" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
+        <div id="swp-3" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
+      </div>
+    </div>
     <div id="stay-alerts"></div>
+    <!-- STEP 1: Perro y fechas -->
+    <div id="stay-step-1">
     <div class="form-grid">
       <div class="form-group span2" style="position:relative">
         <label>Perro *</label>
@@ -1343,6 +1367,11 @@ tr:hover td { background: var(--gray-50); }
         </div>
         <input type="date" id="stay-checkout" onchange="updateStayPreview();refreshStayCtSelect()">
       </div>
+    </div><!-- /form-grid step1 -->
+    </div><!-- /stay-step-1 -->
+    <!-- STEP 2: Tarifa, pagos, descuento -->
+    <div id="stay-step-2">
+    <div class="form-grid">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div class="form-group">
           <label>Tipo de tarifa *</label>
@@ -1436,7 +1465,10 @@ tr:hover td { background: var(--gray-50); }
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Este monto reemplaza cualquier cálculo automático (tarifa diaria, feriados, descuentos).</div>
       </div>
-    </div>
+    </div><!-- /form-grid step2 -->
+    </div><!-- /stay-step-2 -->
+    <!-- STEP 3: Cuidadora -->
+    <div id="stay-step-3">
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Cuidadora asignada</div>
       <div class="form-grid">
@@ -1497,7 +1529,18 @@ tr:hover td { background: var(--gray-50); }
     <div id="stay-total-preview" style="background:var(--green-50);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--green-800);margin-top:4px;display:none">
       Total estimado: <strong id="stay-total-val"></strong>
     </div>
-    <div class="modal-footer">
+    </div><!-- /stay-step-3 -->
+    <!-- Wizard nav footer (mobile only) -->
+    <div id="stay-wizard-footer" style="display:none">
+      <div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <button id="stay-wiz-back" class="btn btn-secondary" style="flex:1" onclick="_stayWizStep(-1)">← Anterior</button>
+        <button id="stay-wiz-next" class="btn btn-primary" style="flex:1" onclick="_stayWizStep(1)">Siguiente →</button>
+        <button id="stay-wiz-save" class="btn btn-primary" style="flex:1;display:none" onclick="saveStay()">✓ Guardar</button>
+      </div>
+      <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;margin-top:8px;padding:4px;cursor:pointer" onclick="closeModal('modal-stay')">Cancelar</button>
+    </div>
+    <!-- Desktop footer -->
+    <div class="modal-footer" id="stay-desktop-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-stay')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveStay()">Guardar estadía</button>
     </div>
@@ -4054,7 +4097,74 @@ function openStayModal(id) {
     populateCtSelect('stay-caretaker', today(), today());
   }
   openModal('modal-stay');
+  if (window.innerWidth <= 768) {
+    _initStayWizard();
+  } else {
+    // Ensure all steps visible on desktop
+    [1, 2, 3].forEach(n => {
+      const el = document.getElementById('stay-step-' + n);
+      if (el) el.style.display = '';
+    });
+    document.getElementById('stay-wizard-header').style.display = 'none';
+    document.getElementById('stay-wizard-footer').style.display = 'none';
+    document.getElementById('stay-desktop-footer').style.display = '';
+  }
 }
+
+// ── Stay wizard (mobile only) ──────────────────────────────────────────────
+let _stayWizCurrent = 1;
+const _STAY_WIZ_NAMES = ['', 'Perro y fechas', 'Tarifa y pagos', 'Cuidadora'];
+
+function _initStayWizard() {
+  _stayWizCurrent = 1;
+  document.getElementById('stay-wizard-header').style.display = 'block';
+  document.getElementById('stay-wizard-footer').style.display = 'block';
+  document.getElementById('stay-desktop-footer').style.display = 'none';
+  _stayWizRender();
+}
+
+function _stayWizRender() {
+  const cur = _stayWizCurrent;
+  // Show/hide steps
+  [1, 2, 3].forEach(n => {
+    const el = document.getElementById('stay-step-' + n);
+    if (el) el.style.display = n === cur ? '' : 'none';
+  });
+  // Progress bar
+  [1, 2, 3].forEach(n => {
+    const bar = document.getElementById('swp-' + n);
+    if (bar) bar.style.background = n <= cur ? 'var(--green-600)' : 'var(--gray-200)';
+  });
+  // Labels
+  document.getElementById('stay-wizard-step-label').textContent = `Paso ${cur} de 3`;
+  document.getElementById('stay-wizard-step-name').textContent = _STAY_WIZ_NAMES[cur] || '';
+  // Buttons
+  document.getElementById('stay-wiz-back').style.display = cur > 1 ? '' : 'none';
+  document.getElementById('stay-wiz-next').style.display = cur < 3 ? '' : 'none';
+  document.getElementById('stay-wiz-save').style.display = cur === 3 ? '' : 'none';
+  // Scroll modal to top
+  const modal = document.querySelector('#modal-stay .modal');
+  if (modal) modal.scrollTop = 0;
+}
+
+function _stayWizStep(dir) {
+  const next = _stayWizCurrent + dir;
+  if (next < 1 || next > 3) return;
+  // Validate step 1 before advancing
+  if (dir > 0 && _stayWizCurrent === 1) {
+    if (!document.getElementById('stay-dog').value) {
+      alert('Seleccioná un perro primero.');
+      return;
+    }
+    if (!document.getElementById('stay-checkin').value) {
+      alert('Ingresá la fecha de ingreso.');
+      return;
+    }
+  }
+  _stayWizCurrent = next;
+  _stayWizRender();
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 function onStayDogChange() {
   const dogId = parseInt(document.getElementById('stay-dog').value);
@@ -5203,6 +5313,36 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
 
   const ownerLabel = primary ? primary.name : (dog.owner_last_name || '');
 
+  // Mobile: clean vertical card
+  if (window.innerWidth <= 768) {
+    const alertBadges = [
+      meds.length ? `<span style="background:var(--amber-50);color:var(--amber-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">💊 ${meds.length} med${meds.length>1?'s':''}</span>` : '',
+      allergies.length ? `<span style="background:var(--red-50);color:var(--red-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">🚫 Alergias</span>` : '',
+      conflicts.length ? `<span style="background:var(--amber-50);color:var(--amber-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">⚡ ${conflicts.length} conflicto${conflicts.length>1?'s':''}</span>` : '',
+      incidents.length ? `<span style="background:var(--red-50);color:var(--red-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">📋 ${incidents.length} incidencia${incidents.length>1?'s':''}</span>` : '',
+      pendingAmt > 0 ? `<span style="background:var(--red-50);color:var(--red-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">💰 Debe ${fmtMoney(pendingAmt)}</span>` : '',
+      vacWarnDate ? `<span style="background:var(--amber-50);color:var(--amber-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">⚠️ Cuid. sale ${fmtDate(vacWarnDate)}</span>` : '',
+    ].filter(Boolean).join(' ');
+
+    const behavLabels = { 'fácil':'😊 Fácil','juguetón':'🎾 Juguetón','ladrador':'📢 Ladrador','agresivo':'⚠️ Agresivo' };
+    const sizeLabels = { 'pequeño':'S','mediano':'M','grande':'G' };
+
+    return `<div class="dog-daily-card ${sectionCls}" style="display:block;padding:14px 16px;margin-bottom:10px;border-radius:12px;cursor:pointer" onclick="viewDog(${dog.id})">
+      <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
+        <div style="width:28px;height:28px;border-radius:50%;background:var(--green-100);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--green-800);flex-shrink:0;font-size:13px">${num}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.2">${dog.name}</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-top:2px">${ownerLabel}${dog.sex?' · '+(dog.sex==='macho'?'♂':'♀'):''}${dog.size?' · '+sizeLabels[dog.size]:''}${dog.behavior_primary?' · '+(behavLabels[dog.behavior_primary]||dog.behavior_primary):''}</div>
+        </div>
+      </div>
+      ${primary?.phone ? `<a href="tel:${primary.phone}" onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:8px;background:var(--green-50);color:var(--green-800);border-radius:8px;padding:8px 12px;font-size:14px;font-weight:500;text-decoration:none;margin-bottom:8px">📞 ${primary.phone} <span style="font-size:12px;color:var(--text-muted)">${ownerLabel}</span></a>` : ''}
+      ${caretaker ? `<div style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--teal-800);margin-bottom:8px">👩 ${caretaker.name}</div>` : ''}
+      ${checkoutStr ? `<div style="font-size:13px;color:var(--text-muted);margin-bottom:8px">📅 Sale: <strong>${fmtDate(checkoutStr)}</strong></div>` : ''}
+      ${alertBadges ? `<div style="display:flex;flex-wrap:wrap;gap:6px">${alertBadges}</div>` : ''}
+    </div>`;
+  }
+
+  // Desktop: original compact icon card
   return `<div class="dog-daily-card ${sectionCls}" onclick="viewDog(${dog.id})">
     <div class="dog-card-num">${num}</div>
     <div style="min-width:0;flex:1">
