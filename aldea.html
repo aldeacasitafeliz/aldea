@@ -406,17 +406,16 @@ tr:hover td { background: var(--gray-50); }
   .btn { padding: 11px 16px; font-size: 14px; }
   .btn-sm { padding: 8px 12px; font-size: 13px; }
 
-  /* Tabs: smooth native horizontal scroll, no JS blocking */
+  /* Tabs: let the browser handle direction naturally.
+     overflow-x: auto + -webkit-overflow-scrolling: touch is all that's needed.
+     No touch-action override — that blocks vertical scroll on the page. */
   .tabs, .ficha-tabs {
     overflow-x: auto;
     overflow-y: hidden;
     flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch; /* momentum / inertia on iOS */
-    touch-action: pan-x;              /* browser handles H-scroll, won't trigger page V-scroll */
-    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
     align-items: stretch;
     padding-bottom: 1px;
-    /* No overscroll-behavior or scroll-snap — they cause the rigid feel */
   }
   .tab-btn, .ficha-tab-btn {
     white-space: nowrap;
@@ -424,11 +423,9 @@ tr:hover td { background: var(--gray-50); }
     padding: 12px 16px;
     font-size: 14px;
   }
-  /* Bottom nav scroll bar — same treatment */
+  /* Bottom nav scroll */
   .bottom-nav-scroll {
-    touch-action: pan-x;
     -webkit-overflow-scrolling: touch;
-    scroll-behavior: smooth;
   }
 
   /* Visual grid: reduce dog col width */
