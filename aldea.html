@@ -6748,27 +6748,37 @@ function saveCaretaker() {
   if (!name) { alertEl.innerHTML = '<div class="alert alert-danger">El nombre es obligatorio.</div>'; return; }
   const cts = DB.caretakers;
   if (editingCaretakerId) {
-    const i = cts.findIndex(x => x.id === editingCaretakerId);
-    const updated = { ...cts[i], name, status, joined_date, notes, email };
-    if (password) updated.password = password;
-    cts[i] = updated;
+    // Editing: require current password to confirm identity
+    promptCaretakerPassword(editingCaretakerId, 'modificar perfil de cuidadora', () => {
+      const i = cts.findIndex(x => x.id === editingCaretakerId);
+      const updated = { ...cts[i], name, status, joined_date, notes, email };
+      if (password) updated.password = password;
+      cts[i] = updated;
+      DB.saveCaretakers(cts);
+      _auditLog(editingCaretakerId, 'modificar_perfil', { name, status });
+      closeModal('modal-caretaker');
+      renderCaretakersPage();
+    });
   } else {
     if (!password) { alertEl.innerHTML = '<div class="alert alert-danger">La contraseña es obligatoria para nuevas cuidadoras.</div>'; return; }
     cts.push({ id: DB.nextId(cts), name, status, joined_date, notes, password, email });
+    DB.saveCaretakers(cts);
+    closeModal('modal-caretaker');
+    renderCaretakersPage();
   }
-  DB.saveCaretakers(cts);
-  closeModal('modal-caretaker');
-  renderCaretakersPage();
 }
 
 function deleteCaretaker(id) {
   if (!confirm('¿Eliminar esta cuidadora? Se eliminarán también sus asignaciones y turnos.')) return;
-  DB.saveCaretakers(DB.caretakers.filter(c => c.id !== id));
-  DB.saveAssignments(DB.assignments.filter(a => a.caretaker_id !== id));
-  DB.saveFeedingShifts(DB.feedingShifts.filter(f => f.caretaker_id !== id));
-  DB.savePhoneShifts(DB.phoneShifts.filter(p => p.caretaker_id !== id));
-  DB.saveVacations(DB.vacations.filter(v => v.caretaker_id !== id));
-  renderCaretakersPage();
+  promptCaretakerPassword(id, 'eliminar perfil de cuidadora', () => {
+    DB.saveCaretakers(DB.caretakers.filter(c => c.id !== id));
+    DB.saveAssignments(DB.assignments.filter(a => a.caretaker_id !== id));
+    DB.saveFeedingShifts(DB.feedingShifts.filter(f => f.caretaker_id !== id));
+    DB.savePhoneShifts(DB.phoneShifts.filter(p => p.caretaker_id !== id));
+    DB.saveVacations(DB.vacations.filter(v => v.caretaker_id !== id));
+    _auditLog(id, 'eliminar_cuidadora', {});
+    renderCaretakersPage();
+  });
 }
 
 // ---- Caretaker password verification ----
@@ -7056,16 +7066,8 @@ function showVacationConflicts(vacId, conflictAsgns) {
 }
 
 function saveVacationReassignments() {
-  // Collect distinct new caretaker IDs to verify password for the first one
-  const selects = document.querySelectorAll('#vac-conflict-list select[data-asgn-id]');
-  const newCtIds = [...new Set([...selects].map(s => parseInt(s.value)).filter(Boolean))];
-  const ctToVerify = newCtIds[0];
-  const doSave = () => _doSaveVacationReassignments();
-  if (ctToVerify) {
-    promptCaretakerPassword(ctToVerify, 'confirmar reasignación de perros', doSave);
-  } else {
-    doSave();
-  }
+  // No second password needed — vacation itself was already validated
+  _doSaveVacationReassignments();
 }
 
 function _doSaveVacationReassignments() {
@@ -7294,7 +7296,12 @@ function saveAssignmentChange() {
     return;
   }
 
-  promptCaretakerPassword(newCtId, 'guardar asignación de cuidadora', () => {
+  // Password only required when REASSIGNING (editing existing, changing caretaker)
+  const existingAsgn = changingAssignmentId ? DB.assignments.find(a => a.id === changingAssignmentId) : null;
+  const isReassign = existingAsgn && existingAsgn.caretaker_id !== newCtId;
+  const pwCtId = isReassign ? existingAsgn.caretaker_id : null; // password of the caretaker being REPLACED
+
+  const doSaveAssignment = () => {
     const asgns = DB.assignments;
     if (changingAssignmentId) {
       const idx = asgns.findIndex(a => a.id === changingAssignmentId);
@@ -7310,16 +7317,14 @@ function saveAssignmentChange() {
       asgns.push({ id: DB.nextId(asgns), dog_id: _asgnDogId, caretaker_id: newCtId, service_type: _asgnType, ref_id: _asgnRefId, from_dt: fromDt, to_dt: toDt, mode: 'parcial', user, notes, change_log: [] });
     }
     DB.saveAssignments(asgns);
-    _auditLog(newCtId, 'asignacion', { fromDt, toDt, ref_id: _asgnRefId, type: _asgnType });
+    _auditLog(newCtId, isReassign ? 'reasignacion' : 'asignacion', { fromDt, toDt, ref_id: _asgnRefId, type: _asgnType });
 
-    // Reset form for next entry
     changingAssignmentId = null;
     document.getElementById('asgn-form-title').textContent = 'Agregar período';
     document.getElementById('asgn-save-btn').textContent = 'Guardar período';
     document.getElementById('asgn-new-ct').value = '';
     document.getElementById('asgn-alerts').innerHTML = '';
 
-    // Prefill next gap if any
     const gaps = getAsgnGaps(_asgnRefId, _asgnType, _asgnServiceFrom, _asgnServiceTo);
     if (gaps.length) {
       writeDT('asgn-from-dt', gaps[0].from);
@@ -7328,11 +7333,16 @@ function saveAssignmentChange() {
     } else {
       alertEl.innerHTML = '<div class="alert alert-success" style="background:var(--green-50);border:1px solid var(--green-200,#bbf7d0);border-radius:6px;padding:8px 12px;font-size:13px">✅ Toda la estadía está cubierta.</div>';
     }
-
     renderAsgnTimeline();
     renderStaysTable();
     renderDaycareTable();
-  });
+  };
+
+  if (isReassign) {
+    promptCaretakerPassword(pwCtId, 'reasignar cuidadora', doSaveAssignment);
+  } else {
+    doSaveAssignment();
+  }
 }
 
 // ---- Feeding shifts ----
@@ -7375,7 +7385,11 @@ function saveFeedingShift() {
     alertEl.innerHTML = '<div class="alert alert-danger">⚠️ Esta cuidadora está de vacaciones en esa fecha.</div>';
     return;
   }
-  promptCaretakerPassword(caretaker_id, 'registrar turno de alimentación', () => {
+  // Password only if REASSIGNING (editing existing shift and changing caretaker)
+  const oldFeeding = editingFeedingId ? DB.feedingShifts.find(x => x.id === editingFeedingId) : null;
+  const feedingReassign = oldFeeding && oldFeeding.caretaker_id !== caretaker_id;
+
+  const doSaveFeeding = () => {
     const shifts = DB.feedingShifts;
     const obj = { date, shift, caretaker_id, dog_count, confirmed, notes };
     if (editingFeedingId) {
@@ -7385,10 +7399,16 @@ function saveFeedingShift() {
       shifts.push({ id: DB.nextId(shifts), ...obj });
     }
     DB.saveFeedingShifts(shifts);
-    _auditLog(caretaker_id, 'turno_alimentacion', obj);
+    _auditLog(caretaker_id, feedingReassign ? 'reasignacion_turno_alimentacion' : 'turno_alimentacion', obj);
     closeModal('modal-feeding');
     renderFeedingPage();
-  });
+  };
+
+  if (feedingReassign) {
+    promptCaretakerPassword(oldFeeding.caretaker_id, 'reasignar turno de alimentación', doSaveFeeding);
+  } else {
+    doSaveFeeding();
+  }
 }
 
 function deleteFeedingShift(id) {
@@ -7440,7 +7460,10 @@ function savePhoneShift() {
     alertEl.innerHTML = '<div class="alert alert-danger">⚠️ Esta cuidadora está de vacaciones en esa fecha.</div>';
     return;
   }
-  promptCaretakerPassword(caretaker_id, 'registrar turno de teléfono', () => {
+  const oldPhone = editingPhoneId ? DB.phoneShifts.find(x => x.id === editingPhoneId) : null;
+  const phoneReassign = oldPhone && oldPhone.caretaker_id !== caretaker_id;
+
+  const doSavePhone = () => {
     const shifts = DB.phoneShifts;
     const obj = { date, caretaker_id, notes };
     if (editingPhoneId) {
@@ -7450,10 +7473,16 @@ function savePhoneShift() {
       shifts.push({ id: DB.nextId(shifts), ...obj });
     }
     DB.savePhoneShifts(shifts);
-    _auditLog(caretaker_id, 'turno_telefono', obj);
+    _auditLog(caretaker_id, phoneReassign ? 'reasignacion_turno_telefono' : 'turno_telefono', obj);
     closeModal('modal-phone');
     renderPhonePage();
-  });
+  };
+
+  if (phoneReassign) {
+    promptCaretakerPassword(oldPhone.caretaker_id, 'reasignar turno de teléfono', doSavePhone);
+  } else {
+    doSavePhone();
+  }
 }
 
 function deletePhoneShift(id) {
