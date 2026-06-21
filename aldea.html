@@ -1338,6 +1338,7 @@ tr:hover td { background: var(--gray-50); }
         <div id="swp-1" style="height:4px;flex:1;border-radius:2px;background:var(--green-600);transition:background 0.2s"></div>
         <div id="swp-2" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
         <div id="swp-3" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
+        <div id="swp-4" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
       </div>
     </div>
     <div id="stay-alerts"></div>
@@ -1410,7 +1411,11 @@ tr:hover td { background: var(--gray-50); }
         <label>Observaciones</label>
         <textarea id="stay-notes" rows="2"></textarea>
       </div>
-      <div class="form-group span2">
+    </div><!-- /form-grid step2 -->
+    </div><!-- /stay-step-2 -->
+    <!-- STEP 3: Pagos y montos -->
+    <div id="stay-step-3">
+      <div class="form-group">
         <label>¿Hubo pago adelantado?</label>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
@@ -1421,11 +1426,11 @@ tr:hover td { background: var(--gray-50); }
           </label>
         </div>
       </div>
-      <div id="stay-advance-section" style="display:none;grid-column:span 2">
+      <div id="stay-advance-section" style="display:none;margin-bottom:12px">
         <div id="stay-advance-rows"></div>
         <button type="button" class="btn btn-secondary btn-sm" style="margin-top:4px" onclick="addStayAdvanceRow()">+ Agregar adelanto</button>
       </div>
-      <div class="form-group span2">
+      <div class="form-group">
         <label>¿Se aplicará descuento?</label>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
@@ -1436,7 +1441,7 @@ tr:hover td { background: var(--gray-50); }
           </label>
         </div>
       </div>
-      <div id="stay-discount-section" style="display:none;grid-column:span 2">
+      <div id="stay-discount-section" style="display:none;margin-bottom:12px">
         <div class="form-grid" style="margin:0">
           <div class="form-group">
             <label>Porcentaje de descuento (%)</label>
@@ -1447,7 +1452,7 @@ tr:hover td { background: var(--gray-50); }
           </div>
         </div>
       </div>
-      <div class="form-group span2">
+      <div class="form-group">
         <label>¿Ingresar monto manualmente?</label>
         <div style="display:flex;gap:10px;align-items:center">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
@@ -1458,17 +1463,16 @@ tr:hover td { background: var(--gray-50); }
           </label>
         </div>
       </div>
-      <div id="stay-manual-section" style="display:none;grid-column:span 2">
+      <div id="stay-manual-section" style="display:none;margin-bottom:12px">
         <div class="form-group">
           <label>Monto total a cobrar (S/) *</label>
           <input type="number" id="stay-manual-amount" placeholder="0.00" min="0" step="0.01" oninput="updateStayPreview()" style="font-size:16px;font-weight:600">
         </div>
         <div style="font-size:12px;color:var(--text-muted);margin-top:4px">Este monto reemplaza cualquier cálculo automático (tarifa diaria, feriados, descuentos).</div>
       </div>
-    </div><!-- /form-grid step2 -->
-    </div><!-- /stay-step-2 -->
-    <!-- STEP 3: Cuidadora -->
-    <div id="stay-step-3">
+    </div><!-- /stay-step-3 -->
+    <!-- STEP 4: Cuidadora -->
+    <div id="stay-step-4">
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Cuidadora asignada</div>
       <div class="form-grid">
@@ -1529,7 +1533,7 @@ tr:hover td { background: var(--gray-50); }
     <div id="stay-total-preview" style="background:var(--green-50);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--green-800);margin-top:4px;display:none">
       Total estimado: <strong id="stay-total-val"></strong>
     </div>
-    </div><!-- /stay-step-3 -->
+    </div><!-- /stay-step-4 -->
     <!-- Wizard nav footer (mobile only) -->
     <div id="stay-wizard-footer" style="display:none">
       <div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
@@ -4101,7 +4105,7 @@ function openStayModal(id) {
     _initStayWizard();
   } else {
     // Ensure all steps visible on desktop
-    [1, 2, 3].forEach(n => {
+    [1, 2, 3, 4].forEach(n => {
       const el = document.getElementById('stay-step-' + n);
       if (el) el.style.display = '';
     });
@@ -4113,7 +4117,8 @@ function openStayModal(id) {
 
 // ── Stay wizard (mobile only) ──────────────────────────────────────────────
 let _stayWizCurrent = 1;
-const _STAY_WIZ_NAMES = ['', 'Perro y fechas', 'Tarifa y pagos', 'Cuidadora'];
+const _STAY_WIZ_NAMES = ['', 'Perro y fechas', 'Tarifa e info', 'Pagos y montos', 'Cuidadora'];
+const _STAY_WIZ_TOTAL = 4;
 
 function _initStayWizard() {
   _stayWizCurrent = 1;
@@ -4125,41 +4130,29 @@ function _initStayWizard() {
 
 function _stayWizRender() {
   const cur = _stayWizCurrent;
-  // Show/hide steps
-  [1, 2, 3].forEach(n => {
+  [1, 2, 3, 4].forEach(n => {
     const el = document.getElementById('stay-step-' + n);
     if (el) el.style.display = n === cur ? '' : 'none';
   });
-  // Progress bar
-  [1, 2, 3].forEach(n => {
+  [1, 2, 3, 4].forEach(n => {
     const bar = document.getElementById('swp-' + n);
     if (bar) bar.style.background = n <= cur ? 'var(--green-600)' : 'var(--gray-200)';
   });
-  // Labels
-  document.getElementById('stay-wizard-step-label').textContent = `Paso ${cur} de 3`;
+  document.getElementById('stay-wizard-step-label').textContent = `Paso ${cur} de ${_STAY_WIZ_TOTAL}`;
   document.getElementById('stay-wizard-step-name').textContent = _STAY_WIZ_NAMES[cur] || '';
-  // Buttons
   document.getElementById('stay-wiz-back').style.display = cur > 1 ? '' : 'none';
-  document.getElementById('stay-wiz-next').style.display = cur < 3 ? '' : 'none';
-  document.getElementById('stay-wiz-save').style.display = cur === 3 ? '' : 'none';
-  // Scroll modal to top
+  document.getElementById('stay-wiz-next').style.display = cur < _STAY_WIZ_TOTAL ? '' : 'none';
+  document.getElementById('stay-wiz-save').style.display = cur === _STAY_WIZ_TOTAL ? '' : 'none';
   const modal = document.querySelector('#modal-stay .modal');
   if (modal) modal.scrollTop = 0;
 }
 
 function _stayWizStep(dir) {
   const next = _stayWizCurrent + dir;
-  if (next < 1 || next > 3) return;
-  // Validate step 1 before advancing
+  if (next < 1 || next > _STAY_WIZ_TOTAL) return;
   if (dir > 0 && _stayWizCurrent === 1) {
-    if (!document.getElementById('stay-dog').value) {
-      alert('Seleccioná un perro primero.');
-      return;
-    }
-    if (!document.getElementById('stay-checkin').value) {
-      alert('Ingresá la fecha de ingreso.');
-      return;
-    }
+    if (!document.getElementById('stay-dog').value) { alert('Seleccioná un perro primero.'); return; }
+    if (!document.getElementById('stay-checkin').value) { alert('Ingresá la fecha de ingreso.'); return; }
   }
   _stayWizCurrent = next;
   _stayWizRender();
@@ -4475,7 +4468,7 @@ function addStayAdvanceRow() {
       ${idx===0?'<label style="font-size:12px">Fecha del adelanto</label>':''}
       <input type="date" class="stay-adv-date" value="${today()}" style="width:100%">
     </div>
-    <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:2px" onclick="document.getElementById('stay-adv-row-${idx}').remove()" title="Quitar">✕</button>`;
+    <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:2px" onclick="document.getElementById('stay-adv-row-${idx}').remove()">Eliminar</button>`;
   document.getElementById('stay-advance-rows').appendChild(row);
 }
 
