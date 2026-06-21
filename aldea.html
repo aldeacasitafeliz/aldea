@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Aldea — Sistema de Gestión</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 :root {
   --green-50: #EAF3DE; --green-100: #C0DD97; --green-200: #97C459;
@@ -603,6 +604,10 @@ tr:hover td { background: var(--gray-50); }
     </div>
     <div class="nav-item" onclick="showPage('export')">
       <span class="nav-icon">📤</span> Exportar
+    </div>
+    <div class="nav-section">Sistema</div>
+    <div class="nav-item" onclick="openEmailJSConfig()">
+      <span class="nav-icon">📧</span> Config. Email
     </div>
   </nav>
 </aside>
@@ -1634,6 +1639,11 @@ tr:hover td { background: var(--gray-50); }
         <input type="password" id="ct-password" placeholder="Contraseña de la cuidadora" autocomplete="new-password">
         <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Se usará para validar acciones que afecten sus métricas</div>
       </div>
+      <div class="form-group">
+        <label>Email de recuperación</label>
+        <input type="email" id="ct-email" placeholder="correo@ejemplo.com" autocomplete="email">
+        <div style="font-size:11px;color:var(--text-muted);margin-top:3px">Para enviar código si olvida su contraseña</div>
+      </div>
       <div class="form-group span2">
         <label>Observaciones</label>
         <textarea id="ct-notes" rows="2"></textarea>
@@ -1656,9 +1666,94 @@ tr:hover td { background: var(--gray-50); }
       <label id="ct-pw-label">Contraseña de la cuidadora</label>
       <input type="password" id="ct-pw-input" placeholder="Ingresa la contraseña" onkeydown="if(event.key==='Enter')_ctPwConfirm()">
     </div>
+    <div style="text-align:center;margin-top:8px">
+      <button onclick="_ctPwForgot()" style="background:none;border:none;color:var(--green-700);font-size:13px;cursor:pointer;text-decoration:underline">¿Olvidaste tu contraseña?</button>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="_ctPwCancel()">Cancelar</button>
       <button class="btn btn-primary" onclick="_ctPwConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal recuperación de contraseña -->
+<div class="modal-overlay" id="modal-ct-recovery">
+  <div class="modal" style="max-width:400px">
+    <div class="modal-title">📧 Recuperar contraseña</div>
+
+    <!-- Paso 1: Enviar código -->
+    <div id="ct-rec-step1">
+      <div id="ct-rec-info" style="font-size:13px;color:var(--text-muted);margin-bottom:16px"></div>
+      <div id="ct-rec-error" style="display:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-ct-recovery')">Cancelar</button>
+        <button class="btn btn-primary" id="ct-rec-send-btn" onclick="_ctRecSendCode()">Enviar código</button>
+      </div>
+    </div>
+
+    <!-- Paso 2: Ingresar código -->
+    <div id="ct-rec-step2" style="display:none">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Ingresa el código de 6 dígitos que recibiste en tu correo. Válido por 10 minutos.</div>
+      <div id="ct-rec-code-error" style="display:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px">Código incorrecto o expirado.</div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Código de verificación</label>
+        <input type="text" id="ct-rec-code-input" placeholder="123456" maxlength="6" style="letter-spacing:6px;font-size:20px;text-align:center" onkeydown="if(event.key==='Enter')_ctRecVerifyCode()">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="_ctRecBackToStep1()">Volver</button>
+        <button class="btn btn-primary" onclick="_ctRecVerifyCode()">Verificar</button>
+      </div>
+    </div>
+
+    <!-- Paso 3: Nueva contraseña -->
+    <div id="ct-rec-step3" style="display:none">
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Código verificado. Ingresa tu nueva contraseña.</div>
+      <div id="ct-rec-pw-error" style="display:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px"></div>
+      <div class="form-group" style="margin-bottom:8px">
+        <label>Nueva contraseña *</label>
+        <input type="password" id="ct-rec-new-pw" placeholder="Nueva contraseña" autocomplete="new-password">
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Confirmar contraseña *</label>
+        <input type="password" id="ct-rec-confirm-pw" placeholder="Repite la contraseña" onkeydown="if(event.key==='Enter')_ctRecSavePw()">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('modal-ct-recovery')">Cancelar</button>
+        <button class="btn btn-primary" onclick="_ctRecSavePw()">Guardar contraseña</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal configuración EmailJS -->
+<div class="modal-overlay" id="modal-emailjs-config">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">⚙️ Configurar envío de emails</div>
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:16px">
+      Para enviar códigos de recuperación necesitas una cuenta gratuita en <strong>emailjs.com</strong>.<br>
+      <a href="https://www.emailjs.com" target="_blank" style="color:var(--green-700)">Ver instrucciones →</a>
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Service ID</label>
+      <input type="text" id="ejs-service-id" placeholder="service_xxxxxxx">
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label>Template ID</label>
+      <input type="text" id="ejs-template-id" placeholder="template_xxxxxxx">
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Public Key</label>
+      <input type="text" id="ejs-public-key" placeholder="xxxxxxxxxxxxxxxxxxxx">
+    </div>
+    <div style="background:var(--green-50);border-radius:8px;padding:12px;font-size:12px;color:var(--green-800);margin-bottom:16px">
+      <strong>Template de EmailJS requerido:</strong><br>
+      Asunto: <code>Código recuperación - Aldea</code><br>
+      Mensaje: <code>Hola {{to_name}}, tu código es: {{code}}. Válido 10 minutos.</code><br>
+      Variables: <code>to_email, to_name, code</code>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-emailjs-config')">Cancelar</button>
+      <button class="btn btn-primary" onclick="_saveEmailJSConfig()">Guardar configuración</button>
     </div>
   </div>
 </div>
@@ -6548,6 +6643,7 @@ function openCaretakerModal(id) {
     document.getElementById('ct-notes').value = c.notes || '';
     document.getElementById('ct-password').value = '';
     document.getElementById('ct-password').placeholder = 'Dejar en blanco para no cambiar';
+    document.getElementById('ct-email').value = c.email || '';
   } else {
     document.getElementById('ct-name').value = '';
     document.getElementById('ct-status').value = 'activa';
@@ -6555,6 +6651,7 @@ function openCaretakerModal(id) {
     document.getElementById('ct-notes').value = '';
     document.getElementById('ct-password').value = '';
     document.getElementById('ct-password').placeholder = 'Contraseña de la cuidadora';
+    document.getElementById('ct-email').value = '';
   }
   openModal('modal-caretaker');
 }
@@ -6565,17 +6662,18 @@ function saveCaretaker() {
   const joined_date = document.getElementById('ct-joined').value;
   const notes = document.getElementById('ct-notes').value.trim();
   const password = document.getElementById('ct-password').value.trim();
+  const email = document.getElementById('ct-email').value.trim();
   const alertEl = document.getElementById('ct-alerts');
   if (!name) { alertEl.innerHTML = '<div class="alert alert-danger">El nombre es obligatorio.</div>'; return; }
   const cts = DB.caretakers;
   if (editingCaretakerId) {
     const i = cts.findIndex(x => x.id === editingCaretakerId);
-    const updated = { ...cts[i], name, status, joined_date, notes };
+    const updated = { ...cts[i], name, status, joined_date, notes, email };
     if (password) updated.password = password;
     cts[i] = updated;
   } else {
     if (!password) { alertEl.innerHTML = '<div class="alert alert-danger">La contraseña es obligatoria para nuevas cuidadoras.</div>'; return; }
-    cts.push({ id: DB.nextId(cts), name, status, joined_date, notes, password });
+    cts.push({ id: DB.nextId(cts), name, status, joined_date, notes, password, email });
   }
   DB.saveCaretakers(cts);
   closeModal('modal-caretaker');
@@ -6642,6 +6740,148 @@ function _auditLog(caretakerId, action, data) {
   });
   localStorage.setItem('aldea_audit_log', JSON.stringify(logs));
   _sbSync('aldea_audit_log', logs);
+}
+
+// ---- EmailJS config ----
+function _getEJSConfig() {
+  try { return JSON.parse(localStorage.getItem('aldea_emailjs') || 'null'); } catch { return null; }
+}
+function openEmailJSConfig() {
+  const cfg = _getEJSConfig() || {};
+  document.getElementById('ejs-service-id').value = cfg.service_id || '';
+  document.getElementById('ejs-template-id').value = cfg.template_id || '';
+  document.getElementById('ejs-public-key').value = cfg.public_key || '';
+  closeSidebar();
+  openModal('modal-emailjs-config');
+}
+function _saveEmailJSConfig() {
+  const cfg = {
+    service_id: document.getElementById('ejs-service-id').value.trim(),
+    template_id: document.getElementById('ejs-template-id').value.trim(),
+    public_key: document.getElementById('ejs-public-key').value.trim()
+  };
+  if (!cfg.service_id || !cfg.template_id || !cfg.public_key) {
+    alert('Completa todos los campos.'); return;
+  }
+  localStorage.setItem('aldea_emailjs', JSON.stringify(cfg));
+  emailjs.init(cfg.public_key);
+  closeModal('modal-emailjs-config');
+  alert('✅ Configuración guardada.');
+}
+function _initEmailJS() {
+  const cfg = _getEJSConfig();
+  if (cfg?.public_key) emailjs.init(cfg.public_key);
+}
+
+// ---- Password recovery flow ----
+let _ctRecCaretakerId = null;
+let _ctRecCode = null;
+let _ctRecExpiry = null;
+
+function _ctPwForgot() {
+  const ct = DB.caretakers.find(c => c.id === _ctPwCaretakerId);
+  if (!ct) return;
+  if (!ct.email) {
+    alert('Esta cuidadora no tiene email de recuperación registrado.\nEdita su perfil y agrega un email primero.');
+    return;
+  }
+  const cfg = _getEJSConfig();
+  if (!cfg) {
+    if (confirm('Primero debes configurar el servicio de email.\n¿Configurar ahora?')) {
+      closeModal('modal-ct-password');
+      // Pre-fill if already saved
+      openModal('modal-emailjs-config');
+    }
+    return;
+  }
+  _ctRecCaretakerId = _ctPwCaretakerId;
+  closeModal('modal-ct-password');
+  // Show step 1
+  const masked = ct.email.replace(/(.{2})(.*)(@.*)/, (_, a, b, c) => a + '*'.repeat(Math.max(2, b.length)) + c);
+  document.getElementById('ct-rec-info').textContent = `Se enviará un código de verificación a ${masked}.`;
+  document.getElementById('ct-rec-error').style.display = 'none';
+  document.getElementById('ct-rec-step1').style.display = 'block';
+  document.getElementById('ct-rec-step2').style.display = 'none';
+  document.getElementById('ct-rec-step3').style.display = 'none';
+  openModal('modal-ct-recovery');
+}
+
+async function _ctRecSendCode() {
+  const ct = DB.caretakers.find(c => c.id === _ctRecCaretakerId);
+  const cfg = _getEJSConfig();
+  if (!ct || !cfg) return;
+  const btn = document.getElementById('ct-rec-send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+  // Generate 6-digit code
+  _ctRecCode = String(Math.floor(100000 + Math.random() * 900000));
+  _ctRecExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+  try {
+    await emailjs.send(cfg.service_id, cfg.template_id, {
+      to_email: ct.email,
+      to_name: ct.name,
+      code: _ctRecCode
+    });
+    // Move to step 2
+    document.getElementById('ct-rec-step1').style.display = 'none';
+    document.getElementById('ct-rec-step2').style.display = 'block';
+    document.getElementById('ct-rec-code-error').style.display = 'none';
+    document.getElementById('ct-rec-code-input').value = '';
+    setTimeout(() => document.getElementById('ct-rec-code-input')?.focus(), 100);
+  } catch (e) {
+    const errEl = document.getElementById('ct-rec-error');
+    errEl.textContent = 'Error al enviar el email. Verifica la configuración de EmailJS.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Enviar código';
+  }
+}
+
+function _ctRecBackToStep1() {
+  document.getElementById('ct-rec-step1').style.display = 'block';
+  document.getElementById('ct-rec-step2').style.display = 'none';
+  document.getElementById('ct-rec-send-btn').disabled = false;
+  document.getElementById('ct-rec-send-btn').textContent = 'Reenviar código';
+}
+
+function _ctRecVerifyCode() {
+  const entered = document.getElementById('ct-rec-code-input').value.trim();
+  const errEl = document.getElementById('ct-rec-code-error');
+  if (!_ctRecCode || Date.now() > _ctRecExpiry) {
+    errEl.textContent = 'El código expiró. Solicita uno nuevo.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (entered !== _ctRecCode) {
+    errEl.textContent = 'Código incorrecto. Intenta de nuevo.';
+    errEl.style.display = 'block';
+    document.getElementById('ct-rec-code-input').value = '';
+    document.getElementById('ct-rec-code-input').focus();
+    return;
+  }
+  // Correct — move to step 3
+  document.getElementById('ct-rec-step2').style.display = 'none';
+  document.getElementById('ct-rec-step3').style.display = 'block';
+  document.getElementById('ct-rec-new-pw').value = '';
+  document.getElementById('ct-rec-confirm-pw').value = '';
+  document.getElementById('ct-rec-pw-error').style.display = 'none';
+  setTimeout(() => document.getElementById('ct-rec-new-pw')?.focus(), 100);
+}
+
+function _ctRecSavePw() {
+  const pw1 = document.getElementById('ct-rec-new-pw').value.trim();
+  const pw2 = document.getElementById('ct-rec-confirm-pw').value.trim();
+  const errEl = document.getElementById('ct-rec-pw-error');
+  if (!pw1) { errEl.textContent = 'La contraseña no puede estar vacía.'; errEl.style.display = 'block'; return; }
+  if (pw1 !== pw2) { errEl.textContent = 'Las contraseñas no coinciden.'; errEl.style.display = 'block'; return; }
+  const cts = DB.caretakers;
+  const i = cts.findIndex(c => c.id === _ctRecCaretakerId);
+  if (i < 0) return;
+  cts[i] = { ...cts[i], password: pw1 };
+  DB.saveCaretakers(cts);
+  _ctRecCode = null;
+  closeModal('modal-ct-recovery');
+  alert('✅ Contraseña actualizada correctamente.');
 }
 
 // ---- Vacations ----
@@ -7765,6 +8005,7 @@ function renderPhoneMonth() {
 // ===================== INIT =====================
 
 function init() {
+  _initEmailJS();
   const d = new Date();
   document.getElementById('topbar-date').textContent = d.toLocaleDateString('es-PE', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
   document.getElementById('daily-date').value = today();
