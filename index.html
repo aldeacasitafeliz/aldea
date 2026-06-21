@@ -251,6 +251,164 @@ tr:hover td { background: var(--gray-50); }
 .owner-row { display: grid; grid-template-columns: 1fr 130px 120px 28px; gap: 6px; align-items: center; margin-bottom: 6px; }
 .owner-primary-btn { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); background: none; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
 .owner-primary-btn.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+
+/* ====== RESPONSIVE MOBILE ====== */
+
+/* Bottom nav bar (only on mobile) */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--green-900);
+  z-index: 500;
+  padding: 0;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.bottom-nav-scroll {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.bottom-nav-scroll::-webkit-scrollbar { display: none; }
+.bn-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 8px 6px 10px;
+  color: rgba(255,255,255,0.55);
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: color 0.15s;
+}
+.bn-item .bn-icon { font-size: 20px; margin-bottom: 2px; }
+.bn-item.active { color: var(--green-200); }
+.bn-item .bn-dot {
+  position: absolute;
+  top: 6px; right: 14px;
+  width: 7px; height: 7px;
+  background: var(--red-500, #ef4444);
+  border-radius: 50%;
+  border: 1px solid var(--green-900);
+}
+
+/* Mobile hamburger menu toggle */
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+/* Sidebar drawer on mobile */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 800;
+}
+.sidebar-overlay.open { display: block; }
+
+@media (max-width: 768px) {
+  /* Layout */
+  body { overflow: hidden; }
+
+  .app { flex-direction: column; }
+
+  /* Sidebar becomes a slide-in drawer */
+  .sidebar {
+    position: fixed;
+    top: 0; left: -260px; bottom: 0;
+    width: 240px;
+    z-index: 900;
+    transition: left 0.25s ease;
+  }
+  .sidebar.open { left: 0; }
+
+  /* Main fills all space */
+  .main { height: 100dvh; height: 100vh; overflow-y: auto; }
+
+  /* Content padding adjusts for bottom nav */
+  .content { padding: 16px 14px 80px; }
+
+  /* Topbar */
+  .topbar { padding: 12px 16px; }
+  .topbar-title { font-size: 15px; }
+
+  /* Show mobile controls */
+  .mobile-menu-btn { display: inline-flex; }
+  .bottom-nav { display: block; }
+
+  /* Page header stacks on narrow screens */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .page-header > div:last-child { width: 100%; }
+
+  /* Buttons full width in page-header actions */
+  .page-header .btn { width: 100%; justify-content: center; }
+
+  /* Stat grid: 2 columns on mobile */
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+
+  /* Forms: single column */
+  .form-grid,
+  .form-grid.cols3 { grid-template-columns: 1fr; }
+  .form-group.span2 { grid-column: span 1; }
+
+  /* Tables: horizontal scroll */
+  .table-wrap, .scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table { min-width: 540px; }
+
+  /* Cards: full width */
+  .card { padding: 12px 14px; }
+
+  /* Modals: full screen */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100%;
+    max-height: 92dvh;
+    max-height: 92vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 20px 16px 24px;
+  }
+
+  /* Modal footer: stack buttons */
+  .modal-footer { flex-direction: column; gap: 8px; }
+  .modal-footer .btn { width: 100%; justify-content: center; }
+
+  /* Larger touch targets for inputs */
+  input, select, textarea { padding: 10px 12px; font-size: 15px; }
+  .btn { padding: 11px 16px; font-size: 14px; }
+  .btn-sm { padding: 8px 12px; font-size: 13px; }
+
+  /* Tabs: scrollable */
+  .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .tab-btn { white-space: nowrap; flex-shrink: 0; }
+
+  /* Visual grid: reduce dog col width */
+  .vg-dog-col, .vg-dog-name { width: 90px; }
+
+  /* Tables in cards scroll horizontally */
+  .card { overflow-x: auto; }
+
+  /* Hide non-essential table columns (mark with .hide-mobile) */
+  .hide-mobile { display: none !important; }
+
+  /* Row actions: smaller */
+  td .btn-sm { padding: 5px 8px; font-size: 11px; }
+}
 </style>
 </head>
 <body>
@@ -348,10 +506,16 @@ tr:hover td { background: var(--gray-50); }
   </nav>
 </aside>
 
+<!-- Sidebar overlay for mobile -->
+<div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
 <!-- MAIN -->
 <main class="main">
   <div class="topbar">
-    <div class="topbar-title" id="topbar-title">Dashboard</div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="mobile-menu-btn" onclick="openSidebar()" aria-label="Menú">☰</button>
+      <div class="topbar-title" id="topbar-title">Dashboard</div>
+    </div>
     <div class="topbar-date" id="topbar-date"></div>
   </div>
 
@@ -826,6 +990,24 @@ tr:hover td { background: var(--gray-50); }
 
   </div>
 </main>
+
+<!-- Bottom navigation (mobile only) -->
+<nav class="bottom-nav" id="bottom-nav">
+  <div class="bottom-nav-scroll">
+    <div class="bn-item active" onclick="showPage('dashboard')" id="bn-dashboard"><span class="bn-icon">🏠</span>Inicio</div>
+    <div class="bn-item" onclick="showPage('daily')" id="bn-daily"><span class="bn-icon">📋</span>Hoy</div>
+    <div class="bn-item" onclick="showPage('calendar')" id="bn-calendar"><span class="bn-icon">📅</span>Calendario</div>
+    <div class="bn-item" onclick="showPage('dogs')" id="bn-dogs"><span class="bn-icon">🐾</span>Perros</div>
+    <div class="bn-item" onclick="showPage('stays')" id="bn-stays"><span class="bn-icon">🏡</span>Hospedaje</div>
+    <div class="bn-item" onclick="showPage('daycare')" id="bn-daycare"><span class="bn-icon">☀️</span>Guardería</div>
+    <div class="bn-item" onclick="showPage('salidas')" id="bn-salidas"><span class="bn-icon">🚪</span>Salidas</div>
+    <div class="bn-item" onclick="showPage('meds')" id="bn-meds"><span class="bn-icon">💊</span>Meds<span id="bn-meds-dot" class="bn-dot" style="display:none"></span></div>
+    <div class="bn-item" onclick="showPage('allergies')" id="bn-allergies"><span class="bn-icon">🚨</span>Alergias<span id="bn-allergies-dot" class="bn-dot" style="display:none"></span></div>
+    <div class="bn-item" onclick="showPage('caretakers')" id="bn-caretakers"><span class="bn-icon">👩</span>Cuidadoras</div>
+    <div class="bn-item" onclick="showPage('income')" id="bn-income"><span class="bn-icon">💰</span>Ingresos</div>
+    <div class="bn-item" onclick="showPage('export')" id="bn-export"><span class="bn-icon">📤</span>Exportar</div>
+  </div>
+</nav>
 
 <!-- MODALS -->
 
@@ -1952,14 +2134,27 @@ const PAGE_TITLES = {
   salidas: 'Salidas del día'
 };
 
+function openSidebar() {
+  document.querySelector('.sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('open');
+}
+function closeSidebar() {
+  document.querySelector('.sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
 function showPage(id) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.bn-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => {
     if (n.getAttribute('onclick')?.includes(id)) n.classList.add('active');
   });
+  const bnEl = document.getElementById('bn-' + id);
+  if (bnEl) bnEl.classList.add('active');
   document.getElementById('topbar-title').textContent = PAGE_TITLES[id];
+  closeSidebar();
   if (id === 'dashboard') renderDashboard();
   if (id === 'daily') renderDaily();
   if (id === 'calendar') renderCalendar();
@@ -6385,6 +6580,19 @@ function showVacationConflicts(vacId, conflictAsgns) {
 }
 
 function saveVacationReassignments() {
+  // Collect distinct new caretaker IDs to verify password for the first one
+  const selects = document.querySelectorAll('#vac-conflict-list select[data-asgn-id]');
+  const newCtIds = [...new Set([...selects].map(s => parseInt(s.value)).filter(Boolean))];
+  const ctToVerify = newCtIds[0];
+  const doSave = () => _doSaveVacationReassignments();
+  if (ctToVerify) {
+    promptCaretakerPassword(ctToVerify, 'confirmar reasignación de perros', doSave);
+  } else {
+    doSave();
+  }
+}
+
+function _doSaveVacationReassignments() {
   // Need the vacation dates to know the exact overlap window
   const vacId = _vacConflictVacId;
   const vac = DB.vacations.find(v => v.id === vacId);
@@ -7505,6 +7713,8 @@ function updateMedsAlertDot() {
     (dog.medications || []).some(m => !getMedLog(dog.id, m.name, m.time, d)?.administered)
   );
   dot.style.display = hasPending ? 'inline-block' : 'none';
+  const bnDot = document.getElementById('bn-meds-dot');
+  if (bnDot) bnDot.style.display = hasPending ? 'inline-block' : 'none';
 }
 
 // ===================== RESTAURANTE =====================
@@ -7823,6 +8033,8 @@ function updateAllergiesAlertDot() {
     Array.isArray(dog.allergies) && dog.allergies.length > 0
   );
   dot.style.display = hasAlert ? 'inline-block' : 'none';
+  const bnDot = document.getElementById('bn-allergies-dot');
+  if (bnDot) bnDot.style.display = hasAlert ? 'inline-block' : 'none';
 }
 
 function renderAllergiesPage() {
