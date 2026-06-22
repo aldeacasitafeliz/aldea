@@ -10248,16 +10248,19 @@ function prefillDogFromInteg(id) {
   _integFromId = id;
   openNewDog();
   setTimeout(() => {
-    const nameInput = document.getElementById('dog-name');
-    if (nameInput) nameInput.value = integ.dog_name.trim();
-    // Pre-fill primary owner via _dogOwners
-    if (integ.contact_name && _dogOwners.length > 0) {
-      _dogOwners[0].name = integ.contact_name;
-      _dogOwners[0].phone = integ.phone || '';
-    }
-    renderOwnersUI();
+    document.getElementById('dog-name').value = integ.dog_name.trim();
     document.getElementById('dog-modal-title').textContent = '🤝 Perro de integración — Registrar';
-  }, 50);
+    // openNewDog() left _dogOwners=[] — populate with integration contact data
+    _dogOwners = [{
+      id: Date.now(),
+      name: integ.contact_name || '',
+      phone: integ.phone || '',
+      relation: '',
+      notes: '',
+      is_primary: true
+    }];
+    renderOwnersUI();
+  }, 80);
 }
 
 function deleteIntegration(id) {
