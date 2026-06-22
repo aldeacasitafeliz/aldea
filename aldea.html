@@ -788,6 +788,16 @@ tr:hover td { background: var(--gray-50); }
         </div>
       </div>
       <div id="daily-content"></div>
+      <!-- Reservas pendientes para el día seleccionado -->
+      <div id="daily-reservas-wrap" style="margin-top:20px"></div>
+      <!-- Escáner de fechas con +20 -->
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-weight:600;font-size:14px">Análisis de capacidad</span>
+          <button class="btn btn-secondary" onclick="scanOvercapacityDates()">🔍 Ver fechas con +20 en los próximos 365 días</button>
+        </div>
+        <div id="daily-overcapacity-wrap" style="margin-top:12px"></div>
+      </div>
     </div>
 
     <!-- CALENDARIO VISUAL -->
@@ -2543,7 +2553,7 @@ function calcStayBaseTotal(stay) {
   if (stay.is_exchange) return 0;
   const effectiveOut = stay.open_ended ? today() : stay.check_out_date;
   const nights = dateDiff(stay.check_in_date, effectiveOut); // nights == days numerically
-  const rate = parseFloat(stay.daily_rate) || 0;
+  const rate = parseFloat(stay.daily_rate) || parseFloat(stay.rate) || 0;
   const hols = _stayEffectiveHolidays(stay);
   const holidayDays = hols.filter(h => h.date >= stay.check_in_date && h.date < effectiveOut).length;
   const holidaySurcharge = holidayDays * HOLIDAY_SURCHARGE;
@@ -5622,6 +5632,112 @@ function renderDaily() {
     <div class="alert alert-success" style="margin-top:16px">
       ${hostedStays.length} hospedados + ${leavingStays.length} salidas + ${dcRecords.length} daycare = <strong>${total} perros</strong>
     </div>`;
+
+  renderDailyReservas(d);
+}
+
+function _getPendingReservasForDate(d) {
+  const all = DB.reservas.filter(r => r.status === 'pendiente');
+  const hosp = all.filter(r => r.type === 'hospedaje' && r.reserved_from <= d && (r.open_ended || (r.check_out_date && r.check_out_date >= d)));
+  const dc   = all.filter(r => r.type === 'daycare' && r.date === d);
+  return { hosp, dc };
+}
+
+function _getDayCapacityCount(d) {
+  const hosted  = getHostedDogs(d).length;
+  const dc      = getDaycareDogs(d).length;
+  const { hosp: rh, dc: rd } = _getPendingReservasForDate(d);
+  return { hosted, dc, resHosp: rh.length, resDc: rd.length, total: hosted + dc + rh.length + rd.length };
+}
+
+function renderDailyReservas(d) {
+  const wrap = document.getElementById('daily-reservas-wrap');
+  if (!wrap) return;
+  const { hosp, dc } = _getPendingReservasForDate(d);
+  const cap = _getDayCapacityCount(d);
+  const confirmed = cap.hosted + cap.dc;
+  const projected = cap.total;
+  const capacityColor = projected > 20 ? 'var(--red-800)' : projected >= 16 ? 'var(--amber-700)' : 'var(--green-800)';
+
+  if (!hosp.length && !dc.length) {
+    wrap.innerHTML = `
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="font-weight:600;font-size:14px">📋 Reservas pendientes</span>
+          <span style="font-size:13px;color:var(--text-muted)">Ninguna para este día</span>
+        </div>
+        <div style="font-size:13px">Capacidad confirmada: <strong style="color:${capacityColor}">${confirmed}</strong> / Proyectada con reservas: <strong style="color:${capacityColor}">${projected}</strong> / 20</div>
+      </div>`;
+    return;
+  }
+
+  const dogRow = (r, type) => {
+    const dog = DB.getDog(r.dog_id);
+    const label = dog ? `<strong>${dog.name}</strong> <span class="text-muted text-sm">${dog.owner_last_name||''}</span>` : `<em>Perro #${r.dog_id}</em>`;
+    const dates = type === 'hospedaje'
+      ? `${fmtDate(r.reserved_from)} → ${r.open_ended ? 'sin fecha' : fmtDate(r.check_out_date)}`
+      : fmtDate(r.date);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;background:var(--amber-50);border:1px solid var(--amber-200);border-radius:7px;margin-bottom:6px">
+      <span style="font-size:18px">${type==='hospedaje'?'🏠':'☀️'}</span>
+      <div style="flex:1">${label} <span class="text-muted text-sm" style="margin-left:6px">${dates}</span></div>
+      <span style="font-size:11px;background:var(--amber-200);color:var(--amber-900);padding:2px 7px;border-radius:10px;white-space:nowrap">Pendiente confirmación</span>
+    </div>`;
+  };
+
+  wrap.innerHTML = `
+    <div style="border-top:1px solid var(--border);padding-top:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-weight:600;font-size:14px">📋 Reservas pendientes para este día</span>
+        <span style="font-size:12px;background:var(--amber-100);color:var(--amber-800);padding:3px 10px;border-radius:10px">${hosp.length + dc.length} reserva(s)</span>
+      </div>
+      <div style="font-size:13px;margin-bottom:12px">
+        Confirmados: <strong>${confirmed}</strong> &nbsp;·&nbsp;
+        Proyectado total (incl. reservas): <strong style="color:${capacityColor}">${projected} / 20</strong>
+        ${projected > 20 ? ' <span style="color:var(--red-800);font-weight:600">⚠️ Excede capacidad</span>' : ''}
+      </div>
+      ${hosp.length ? `<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">HOSPEDAJE (${hosp.length})</div>${hosp.map(r => dogRow(r,'hospedaje')).join('')}` : ''}
+      ${dc.length  ? `<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;margin-top:${hosp.length?'10px':'0'}">DAYCARE (${dc.length})</div>${dc.map(r => dogRow(r,'daycare')).join('')}` : ''}
+    </div>`;
+}
+
+function scanOvercapacityDates() {
+  const wrap = document.getElementById('daily-overcapacity-wrap');
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Escaneando 365 días...</div>';
+
+  const results = [];
+  const start = new Date();
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const ds = d.toISOString().slice(0,10);
+    const cap = _getDayCapacityCount(ds);
+    if (cap.total > 20) results.push({ date: ds, ...cap });
+  }
+
+  if (!results.length) {
+    wrap.innerHTML = '<div style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--green-800)">✅ No hay fechas con más de 20 perros en los próximos 365 días.</div>';
+    return;
+  }
+
+  const chips = results.map(r => {
+    const color = r.total > 25 ? 'var(--red-700)' : 'var(--amber-700)';
+    const bg    = r.total > 25 ? 'var(--red-50)'  : 'var(--amber-50)';
+    const border= r.total > 25 ? 'var(--red-200)'  : 'var(--amber-200)';
+    return `<button onclick="jumpToDate('${r.date}')" style="background:${bg};border:1px solid ${border};color:${color};border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:600;text-align:left;min-width:160px">
+      <div>${fmtDate(r.date)}</div>
+      <div style="font-size:11px;font-weight:400;margin-top:2px">🏠 ${r.hosted} conf. · ☀️ ${r.dc} dc · 📋 ${r.resHosp+r.resDc} res. · <strong>Total: ${r.total}</strong></div>
+    </button>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Se encontraron <strong style="color:var(--red-800)">${results.length}</strong> fechas con más de 20 perros. Tocá una para ver el detalle:</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">${chips}</div>`;
+}
+
+function jumpToDate(d) {
+  document.getElementById('daily-date').value = d;
+  renderDaily();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function printDaily() {
@@ -6164,7 +6280,7 @@ function updatePickupPreview() {
     const exitDate = document.getElementById('pickup-date').value || today();
     // For open-ended: days up to day before exit = full rate; exit day = half or full
     const fullDays = dateDiff(stay.check_in_date, exitDate);
-    const rate = parseFloat(stay.daily_rate) || 0;
+    const rate = parseFloat(stay.daily_rate) || parseFloat(stay.rate) || 0;
     const hols = _stayEffectiveHolidays({ ...stay, check_out_date: exitDate, open_ended: false });
     const holDays = hols.filter(h => h.date >= stay.check_in_date && h.date < exitDate).length;
     const exitHol = hols.some(h => h.date === exitDate) ? HOLIDAY_SURCHARGE : 0;
@@ -6215,7 +6331,7 @@ function savePickup() {
     if (!exitDate) { alert('Ingresa la fecha real de salida.'); return; }
     // Recalculate final total and close the stay
     const fullDays = dateDiff(stay.check_in_date, exitDate);
-    const rate = parseFloat(stay.daily_rate) || 0;
+    const rate = parseFloat(stay.daily_rate) || parseFloat(stay.rate) || 0;
     const closedStay = { ...stay, check_out_date: exitDate, open_ended: false };
     const hols = _stayEffectiveHolidays({ ...closedStay });
     const holDays = hols.filter(h => h.date >= stay.check_in_date && h.date < exitDate).length;
@@ -7596,10 +7712,18 @@ function prefillAsgnEdit(asgnId) {
 
 function deleteAsgnPeriod(asgnId) {
   if (!confirm('¿Eliminar este período de asignación?')) return;
-  DB.saveAssignments(DB.assignments.filter(a => a.id !== asgnId));
-  renderAsgnTimeline();
-  renderStaysTable();
-  renderDaycareTable();
+  const asgn = DB.assignments.find(a => a.id === asgnId);
+  const doDelete = () => {
+    DB.saveAssignments(DB.assignments.filter(a => a.id !== asgnId));
+    renderAsgnTimeline();
+    renderStaysTable();
+    renderDaycareTable();
+  };
+  if (asgn?.caretaker_id) {
+    promptCaretakerPassword(asgn.caretaker_id, 'eliminar asignación', doDelete);
+  } else {
+    doDelete();
+  }
 }
 
 function openAssignmentChangeModal(refId, type) {
