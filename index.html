@@ -10134,14 +10134,6 @@ function openIntegResultModal(id) {
 }
 
 function saveIntegResult() {
-  const id = parseInt(document.getElementById('integ-result-id').value);
-  const integ = DB.integrations.find(x => x.id === id);
-  if (!integ) return;
-  const toVerify = (integ.caretaker_ids || []).filter(cid => DB.caretakers.find(c => c.id === cid && c.password));
-  if (toVerify.length) {
-    _promptChainedPasswords(toVerify, 0, 'registrar resultado de integración', _doSaveIntegResult);
-    return;
-  }
   _doSaveIntegResult();
 }
 
