@@ -10076,7 +10076,32 @@ function saveIntegration() {
   const dogName = document.getElementById('integ-dog-name').value.trim();
   const date = document.getElementById('integ-date').value;
   if (!dogName || !date) { alerts.innerHTML = '<div class="alert alert-danger">Nombre del perro y fecha son obligatorios.</div>'; return; }
-  const ctIds = Array.from(document.querySelectorAll('#integ-caretakers input[type=checkbox]:checked')).map(c => parseInt(c.value));
+  const newCtIds = Array.from(document.querySelectorAll('#integ-caretakers input[type=checkbox]:checked')).map(c => parseInt(c.value));
+
+  // If editing and caretakers changed, require password of each affected caretaker
+  if (_editingIntegId) {
+    const existing = DB.integrations.find(x => x.id === _editingIntegId);
+    const oldIds = existing?.caretaker_ids || [];
+    const changed = newCtIds.filter(id => !oldIds.includes(id)).concat(oldIds.filter(id => !newCtIds.includes(id)));
+    const toVerify = [...new Set(changed)].filter(id => DB.caretakers.find(c => c.id === id && c.password));
+    if (toVerify.length) {
+      _promptChainedPasswords(toVerify, 0, 'editar cuidadoras de integración', () => _doSaveIntegration(newCtIds));
+      return;
+    }
+  }
+  _doSaveIntegration(newCtIds);
+}
+
+function _promptChainedPasswords(ctIds, index, actionLabel, onAllDone) {
+  if (index >= ctIds.length) { onAllDone(); return; }
+  promptCaretakerPassword(ctIds[index], actionLabel, () => {
+    _promptChainedPasswords(ctIds, index + 1, actionLabel, onAllDone);
+  });
+}
+
+function _doSaveIntegration(ctIds) {
+  const dogName = document.getElementById('integ-dog-name').value.trim();
+  const date = document.getElementById('integ-date').value;
   const obj = {
     dog_name: dogName,
     contact_name: document.getElementById('integ-contact').value.trim(),
@@ -10109,6 +10134,18 @@ function openIntegResultModal(id) {
 }
 
 function saveIntegResult() {
+  const id = parseInt(document.getElementById('integ-result-id').value);
+  const integ = DB.integrations.find(x => x.id === id);
+  if (!integ) return;
+  const toVerify = (integ.caretaker_ids || []).filter(cid => DB.caretakers.find(c => c.id === cid && c.password));
+  if (toVerify.length) {
+    _promptChainedPasswords(toVerify, 0, 'registrar resultado de integración', _doSaveIntegResult);
+    return;
+  }
+  _doSaveIntegResult();
+}
+
+function _doSaveIntegResult() {
   const id = parseInt(document.getElementById('integ-result-id').value);
   const result = document.querySelector('input[name="integ-result"]:checked').value;
   const reason = document.getElementById('integ-result-reason').value.trim();
