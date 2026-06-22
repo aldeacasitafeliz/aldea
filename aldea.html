@@ -10030,8 +10030,9 @@ function openIntegrationModal(id) {
   // populate caretakers
   const cts = DB.caretakers.filter(c => c.status === 'activa');
   document.getElementById('integ-caretakers').innerHTML = cts.map(c =>
-    `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer">
-      <input type="checkbox" value="${c.id}" ${(i?.caretaker_ids||[]).includes(c.id)?'checked':''}> ${c.name}
+    `<label style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--surface-2,var(--gray-50));border:1px solid var(--border-md);border-radius:8px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='var(--green-50)'" onmouseout="this.style.background='var(--surface-2,var(--gray-50))'">
+      <input type="checkbox" value="${c.id}" ${(i?.caretaker_ids||[]).includes(c.id)?'checked':''} style="width:18px;height:18px;flex-shrink:0;accent-color:var(--green-600,#16a34a);cursor:pointer">
+      <span style="font-size:14px;font-weight:500">${c.name}</span>
     </label>`
   ).join('');
   openModal('modal-integration');
@@ -10269,7 +10270,7 @@ function deleteIntegration(id) {
     <div class="wizard-step">
       <div class="form-group">
         <label>Cuidadora(s) asignadas</label>
-        <div id="integ-caretakers" style="max-height:180px;overflow-y:auto;padding:4px"></div>
+        <div id="integ-caretakers" style="display:flex;flex-direction:column;gap:6px;margin-top:4px"></div>
       </div>
     </div>
     <!-- Paso 4: Notas -->
