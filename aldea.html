@@ -9888,8 +9888,14 @@ function openReservaModal(id) {
 }
 
 function _setReservaType(type) {
-  document.getElementById('res-type-hosp').classList.toggle('active', type === 'hospedaje');
-  document.getElementById('res-type-dc').classList.toggle('active', type === 'daycare');
+  const btnH = document.getElementById('res-type-hosp');
+  const btnD = document.getElementById('res-type-dc');
+  btnH.classList.toggle('active', type === 'hospedaje');
+  btnD.classList.toggle('active', type === 'daycare');
+  const activeStyle = 'background:var(--green-600,#16a34a);color:#fff;border-color:var(--green-600,#16a34a);font-weight:600';
+  const inactiveStyle = '';
+  btnH.style.cssText = type === 'hospedaje' ? activeStyle : inactiveStyle;
+  btnD.style.cssText = type === 'daycare' ? activeStyle : inactiveStyle;
   document.getElementById('res-hosp-fields').style.display = type === 'hospedaje' ? '' : 'none';
   document.getElementById('res-dc-fields').style.display = type === 'daycare' ? '' : 'none';
 }
