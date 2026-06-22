@@ -2484,7 +2484,7 @@ function isHoliday(dateStr) {
 }
 
 function getHolidaysInRange(from, to) {
-  return DB.holidays.filter(h => h.date >= from && h.date < to);
+  return DB.holidays.filter(h => h.date >= from && h.date <= to);
 }
 
 const HOLIDAY_SURCHARGE = 25;
