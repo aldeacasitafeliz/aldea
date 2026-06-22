@@ -9981,6 +9981,14 @@ function openReservaModal(id) {
   }
   document.getElementById('res-modal-title').textContent = id ? 'Ver / editar reserva' : 'Nueva reserva';
   openModal('modal-reserva');
+  if (window.innerWidth <= 768) {
+    _initResWizard();
+  } else {
+    [1, 2, 3].forEach(n => { const el = document.getElementById('res-step-' + n); if (el) el.style.display = ''; });
+    document.getElementById('res-wizard-header').style.display = 'none';
+    document.getElementById('res-wizard-footer').style.display = 'none';
+    document.getElementById('res-desktop-footer').style.display = '';
+  }
 }
 
 function _setReservaType(type) {
@@ -9989,9 +9997,72 @@ function _setReservaType(type) {
   const activeStyle = 'background:var(--green-600,#16a34a);color:#fff;border-color:var(--green-600,#16a34a);font-weight:600';
   btnH.style.cssText = type === 'hospedaje' ? activeStyle : '';
   btnD.style.cssText = type === 'daycare' ? activeStyle : '';
+  // Step 1 sub-sections
   document.getElementById('res-hosp-fields').style.display = type === 'hospedaje' ? '' : 'none';
   document.getElementById('res-dc-fields').style.display = type === 'daycare' ? '' : 'none';
+  // Step 2 sub-sections
+  document.getElementById('res-h-step2-fields').style.display = type === 'hospedaje' ? '' : 'none';
+  document.getElementById('res-dc-step2-fields').style.display = type === 'daycare' ? '' : 'none';
+  // Step 3 sub-sections
+  document.getElementById('res-h-step3-fields').style.display = type === 'hospedaje' ? '' : 'none';
+  document.getElementById('res-dc-step3-fields').style.display = type === 'daycare' ? '' : 'none';
+  // Reset wizard to step 1 when type changes on mobile
+  if (window.innerWidth <= 768) { _resWizCurrent = 1; _resWizRender(); }
 }
+
+// ── Reserva wizard (mobile only) ──────────────────────────────────────────
+let _resWizCurrent = 1;
+const _RES_WIZ_TOTAL = 3;
+const _RES_WIZ_NAMES = ['', 'Perro y fechas', 'Tarifa e info', 'Pagos'];
+
+function _initResWizard() {
+  _resWizCurrent = 1;
+  document.getElementById('res-wizard-header').style.display = 'block';
+  document.getElementById('res-wizard-footer').style.display = 'block';
+  document.getElementById('res-desktop-footer').style.display = 'none';
+  _resWizRender();
+}
+
+function _resWizRender() {
+  const cur = _resWizCurrent;
+  [1, 2, 3].forEach(n => {
+    const el = document.getElementById('res-step-' + n);
+    if (el) el.style.display = n === cur ? '' : 'none';
+  });
+  [1, 2, 3].forEach(n => {
+    const bar = document.getElementById('rwp-' + n);
+    if (bar) bar.style.background = n <= cur ? 'var(--green-600)' : 'var(--gray-200)';
+  });
+  document.getElementById('res-wizard-step-label').textContent = `Paso ${cur} de ${_RES_WIZ_TOTAL}`;
+  document.getElementById('res-wizard-step-name').textContent = _RES_WIZ_NAMES[cur] || '';
+  document.getElementById('res-wiz-back').style.display = cur > 1 ? '' : 'none';
+  document.getElementById('res-wiz-next').style.display = cur < _RES_WIZ_TOTAL ? '' : 'none';
+  document.getElementById('res-wiz-save').style.display = cur === _RES_WIZ_TOTAL ? '' : 'none';
+  const modal = document.querySelector('#modal-reserva .modal');
+  if (modal) modal.scrollTop = 0;
+}
+
+function _resWizStep(dir) {
+  const next = _resWizCurrent + dir;
+  if (next < 1 || next > _RES_WIZ_TOTAL) return;
+  if (dir > 0 && _resWizCurrent === 1) {
+    const isHosp = document.getElementById('res-hosp-fields').style.display !== 'none';
+    const dogId = isHosp
+      ? document.getElementById('res-dog').value
+      : document.getElementById('res-dc-dog').value;
+    if (!dogId) { alert('Seleccioná un perro primero.'); return; }
+    if (isHosp && !document.getElementById('res-checkin').value) { alert('Ingresá la fecha de ingreso.'); return; }
+    if (!isHosp && !document.getElementById('res-date').value) { alert('Ingresá la fecha.'); return; }
+  }
+  if (dir > 0 && _resWizCurrent === 2) {
+    const isHosp = document.getElementById('res-hosp-fields').style.display !== 'none';
+    const rate = parseFloat(isHosp ? document.getElementById('res-rate-h').value : document.getElementById('res-rate-d').value);
+    if (!rate) { alert('Ingresá la tarifa.'); return; }
+  }
+  _resWizCurrent = next;
+  _resWizRender();
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 function toggleResOpenEnded() {
   const open = document.querySelector('input[name="res-open-ended"]:checked').value === 'si';
@@ -10684,165 +10755,202 @@ function deleteIntegration(id) {
 <div class="modal-overlay" id="modal-reserva">
   <div class="modal" style="max-width:680px">
     <div class="modal-title" id="res-modal-title">Nueva reserva</div>
+    <!-- Wizard progress (mobile only) -->
+    <div id="res-wizard-header" style="display:none;margin-bottom:16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <span id="res-wizard-step-label" style="font-size:13px;font-weight:600;color:var(--green-800)">Paso 1 de 3</span>
+        <span id="res-wizard-step-name" style="font-size:12px;color:var(--text-muted)"></span>
+      </div>
+      <div style="display:flex;gap:4px">
+        <div id="rwp-1" style="height:4px;flex:1;border-radius:2px;background:var(--green-600);transition:background 0.2s"></div>
+        <div id="rwp-2" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
+        <div id="rwp-3" style="height:4px;flex:1;border-radius:2px;background:var(--gray-200);transition:background 0.2s"></div>
+      </div>
+    </div>
     <div id="res-alerts"></div>
-    <!-- Selector de tipo -->
-    <div class="form-group" style="margin-bottom:16px">
-      <label>Tipo de servicio *</label>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        <button type="button" class="btn btn-secondary" id="res-type-hosp" onclick="_setReservaType('hospedaje')">🏠 Hospedaje</button>
-        <button type="button" class="btn btn-secondary" id="res-type-dc" onclick="_setReservaType('daycare')">☀️ Daycare</button>
-      </div>
-    </div>
 
-    <!-- ── HOSPEDAJE ── -->
-    <div id="res-hosp-fields">
-      <!-- Perro con autocomplete -->
-      <div class="form-group" style="position:relative">
-        <label>Perro *</label>
-        <input type="text" id="res-dog-input" placeholder="Buscar por nombre o apellido…" autocomplete="off"
-          oninput="filterResDogSuggestions()" onfocus="filterResDogSuggestions()" onblur="hideResDogSuggestions()" onkeydown="resDogInputKeydown(event)">
-        <input type="hidden" id="res-dog">
-        <div id="res-dog-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border-md);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:220px;overflow-y:auto"></div>
-      </div>
-      <!-- Fechas -->
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Fecha de ingreso *</label>
-          <input type="date" id="res-checkin" onchange="renderResHolidayAlert()">
+    <!-- STEP 1: Tipo + Perro + Fechas/Fecha -->
+    <div id="res-step-1">
+      <!-- Selector de tipo -->
+      <div class="form-group" style="margin-bottom:16px">
+        <label>Tipo de servicio *</label>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button type="button" class="btn btn-secondary" id="res-type-hosp" onclick="_setReservaType('hospedaje')">🏠 Hospedaje</button>
+          <button type="button" class="btn btn-secondary" id="res-type-dc" onclick="_setReservaType('daycare')">☀️ Daycare</button>
         </div>
-        <div class="form-group">
-          <label>Fecha de salida</label>
-          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
-            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
-              <input type="radio" name="res-open-ended" value="no" checked onchange="toggleResOpenEnded()"> Fecha conocida
-            </label>
-            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
-              <input type="radio" name="res-open-ended" value="si" onchange="toggleResOpenEnded()"> Sin fecha de salida
-            </label>
+      </div>
+      <!-- HOSPEDAJE: Perro + Fechas -->
+      <div id="res-hosp-fields">
+        <div class="form-group" style="position:relative">
+          <label>Perro *</label>
+          <input type="text" id="res-dog-input" placeholder="Buscar por nombre o apellido…" autocomplete="off"
+            oninput="filterResDogSuggestions()" onfocus="filterResDogSuggestions()" onblur="hideResDogSuggestions()" onkeydown="resDogInputKeydown(event)">
+          <input type="hidden" id="res-dog">
+          <div id="res-dog-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border-md);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:220px;overflow-y:auto"></div>
+        </div>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha de ingreso *</label>
+            <input type="date" id="res-checkin" onchange="renderResHolidayAlert()">
           </div>
-          <input type="date" id="res-checkout" onchange="renderResHolidayAlert()">
-        </div>
-        <!-- Tarifa -->
-        <div class="form-group">
-          <label>Tipo de tarifa *</label>
-          <select id="res-rate-type">
-            <option value="nightly">Por noche</option>
-            <option value="daily">Por día</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Tarifa (S/) *</label>
-          <input type="number" id="res-rate-h" placeholder="0" min="0" step="1">
-        </div>
-        <!-- Exchange -->
-        <div class="form-group">
-          <label>¿Es canje?</label>
-          <select id="res-exchange">
-            <option value="no">No</option>
-            <option value="si">Sí — S/ 0</option>
-          </select>
-        </div>
-        <div class="form-group span2">
-          <label>Observaciones</label>
-          <textarea id="res-notes" rows="2"></textarea>
+          <div class="form-group">
+            <label>Fecha de salida</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+              <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
+                <input type="radio" name="res-open-ended" value="no" checked onchange="toggleResOpenEnded()"> Fecha conocida
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
+                <input type="radio" name="res-open-ended" value="si" onchange="toggleResOpenEnded()"> Sin fecha de salida
+              </label>
+            </div>
+            <input type="date" id="res-checkout" onchange="renderResHolidayAlert()">
+          </div>
         </div>
       </div>
-      <!-- Pago adelantado -->
-      <div class="form-group">
-        <label>¿Hubo pago adelantado?</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-advance" value="no" checked onchange="toggleResAdvance()"> No</label>
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-advance" value="si" onchange="toggleResAdvance()"> Sí</label>
+      <!-- DAYCARE: Perro + Fecha -->
+      <div id="res-dc-fields" style="display:none">
+        <div class="form-group" style="position:relative">
+          <label>Perro *</label>
+          <input type="text" id="res-dc-dog-input" placeholder="Buscar por nombre o apellido…" autocomplete="off"
+            oninput="filterResDcDogSuggestions()" onfocus="filterResDcDogSuggestions()" onblur="hideResDcDogSuggestions()" onkeydown="resDcDogInputKeydown(event)">
+          <input type="hidden" id="res-dc-dog">
+          <div id="res-dc-dog-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border-md);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:220px;overflow-y:auto"></div>
         </div>
-      </div>
-      <div id="res-advance-section" style="display:none;margin-bottom:12px">
-        <div id="res-advance-rows"></div>
-        <button type="button" class="btn btn-sm" style="margin-top:4px" onclick="addResAdvRow()">+ Agregar adelanto</button>
-      </div>
-      <div id="res-holiday-alert" style="margin-bottom:12px"></div>
-      <!-- Descuento -->
-      <div class="form-group">
-        <label>¿Se aplicará descuento?</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-discount" value="no" checked onchange="toggleResDiscount()"> No</label>
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-discount" value="si" onchange="toggleResDiscount()"> Sí</label>
-        </div>
-      </div>
-      <div id="res-discount-section" style="display:none;margin-bottom:12px">
-        <div class="form-group">
-          <label>Porcentaje de descuento (%)</label>
-          <input type="number" id="res-discount-pct" placeholder="0" min="0" max="100" step="1">
-        </div>
-      </div>
-    </div>
-
-    <!-- ── DAYCARE ── -->
-    <div id="res-dc-fields" style="display:none">
-      <div class="form-group" style="position:relative">
-        <label>Perro *</label>
-        <input type="text" id="res-dc-dog-input" placeholder="Buscar por nombre o apellido…" autocomplete="off"
-          oninput="filterResDcDogSuggestions()" onfocus="filterResDcDogSuggestions()" onblur="hideResDcDogSuggestions()" onkeydown="resDcDogInputKeydown(event)">
-        <input type="hidden" id="res-dc-dog">
-        <div id="res-dc-dog-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border-md);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:220px;overflow-y:auto"></div>
-      </div>
-      <div class="form-grid">
         <div class="form-group">
           <label>Fecha *</label>
           <input type="date" id="res-date" onchange="renderResDcHolidayAlert()">
         </div>
-        <div class="form-group">
-          <label>Tarifa (S/) *</label>
-          <input type="number" id="res-rate-d" placeholder="0" min="0" step="1">
-        </div>
-        <div class="form-group span2">
-          <label>Observaciones</label>
-          <textarea id="res-dc-notes" rows="2"></textarea>
-        </div>
       </div>
-      <!-- Adelanto daycare -->
-      <div class="form-group">
-        <label>¿Hubo pago adelantado?</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-advance" value="no" checked onchange="toggleResDcAdvance()"> No</label>
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-advance" value="si" onchange="toggleResDcAdvance()"> Sí</label>
-        </div>
-      </div>
-      <div id="res-dc-advance-section" style="display:none;margin-bottom:12px">
-        <div id="res-dc-advance-rows"></div>
-        <button type="button" class="btn btn-sm" style="margin-top:4px" onclick="addResDcAdvRow()">+ Agregar adelanto</button>
-      </div>
-      <div id="res-dc-holiday-alert" style="margin-bottom:12px"></div>
-      <!-- Descuento daycare -->
-      <div class="form-group">
-        <label>¿Se aplicará descuento?</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-discount" value="no" checked onchange="toggleResDcDiscount()"> No</label>
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-discount" value="si" onchange="toggleResDcDiscount()"> Sí</label>
-        </div>
-      </div>
-      <div id="res-dc-discount-section" style="display:none;margin-bottom:12px">
-        <div class="form-group">
-          <label>Porcentaje de descuento (%)</label>
-          <input type="number" id="res-dc-discount-pct" placeholder="0" min="0" max="100" step="1">
-        </div>
-      </div>
-      <!-- Manual daycare -->
-      <div class="form-group">
-        <label>¿Ingresar monto manualmente?</label>
-        <div style="display:flex;gap:10px;align-items:center">
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-manual" value="no" checked onchange="toggleResDcManual()"> No — calcular automáticamente</label>
-          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-manual" value="si" onchange="toggleResDcManual()"> Sí — ingresar monto libre</label>
-        </div>
-      </div>
-      <div id="res-dc-manual-section" style="display:none;margin-bottom:12px">
-        <div class="form-group">
-          <label>Monto total a cobrar (S/) *</label>
-          <input type="number" id="res-dc-manual-amount" placeholder="0.00" min="0" step="0.01" style="font-size:16px;font-weight:600">
-        </div>
-      </div>
-    </div>
+    </div><!-- /res-step-1 -->
 
-    <div class="modal-footer">
+    <!-- STEP 2: Tarifa e info -->
+    <div id="res-step-2">
+      <!-- HOSPEDAJE tarifa -->
+      <div id="res-h-step2-fields">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Tipo de tarifa *</label>
+            <select id="res-rate-type">
+              <option value="nightly">Por noche</option>
+              <option value="daily">Por día</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Tarifa (S/) *</label>
+            <input type="number" id="res-rate-h" placeholder="0" min="0" step="1">
+          </div>
+          <div class="form-group">
+            <label>¿Es canje?</label>
+            <select id="res-exchange">
+              <option value="no">No</option>
+              <option value="si">Sí — S/ 0</option>
+            </select>
+          </div>
+          <div class="form-group span2">
+            <label>Observaciones</label>
+            <textarea id="res-notes" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <!-- DAYCARE tarifa -->
+      <div id="res-dc-step2-fields" style="display:none">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Tarifa (S/) *</label>
+            <input type="number" id="res-rate-d" placeholder="0" min="0" step="1">
+          </div>
+          <div class="form-group span2">
+            <label>Observaciones</label>
+            <textarea id="res-dc-notes" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+    </div><!-- /res-step-2 -->
+
+    <!-- STEP 3: Pagos, descuento, feriados -->
+    <div id="res-step-3">
+      <!-- HOSPEDAJE pagos -->
+      <div id="res-h-step3-fields">
+        <div class="form-group">
+          <label>¿Hubo pago adelantado?</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-advance" value="no" checked onchange="toggleResAdvance()"> No</label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-advance" value="si" onchange="toggleResAdvance()"> Sí</label>
+          </div>
+        </div>
+        <div id="res-advance-section" style="display:none;margin-bottom:12px">
+          <div id="res-advance-rows"></div>
+          <button type="button" class="btn btn-sm" style="margin-top:4px" onclick="addResAdvRow()">+ Agregar adelanto</button>
+        </div>
+        <div class="form-group">
+          <label>¿Se aplicará descuento?</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-discount" value="no" checked onchange="toggleResDiscount()"> No</label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-discount" value="si" onchange="toggleResDiscount()"> Sí</label>
+          </div>
+        </div>
+        <div id="res-discount-section" style="display:none;margin-bottom:12px">
+          <div class="form-group">
+            <label>Porcentaje de descuento (%)</label>
+            <input type="number" id="res-discount-pct" placeholder="0" min="0" max="100" step="1">
+          </div>
+        </div>
+        <div id="res-holiday-alert" style="margin-bottom:12px"></div>
+      </div>
+      <!-- DAYCARE pagos -->
+      <div id="res-dc-step3-fields" style="display:none">
+        <div class="form-group">
+          <label>¿Hubo pago adelantado?</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-advance" value="no" checked onchange="toggleResDcAdvance()"> No</label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-advance" value="si" onchange="toggleResDcAdvance()"> Sí</label>
+          </div>
+        </div>
+        <div id="res-dc-advance-section" style="display:none;margin-bottom:12px">
+          <div id="res-dc-advance-rows"></div>
+          <button type="button" class="btn btn-sm" style="margin-top:4px" onclick="addResDcAdvRow()">+ Agregar adelanto</button>
+        </div>
+        <div class="form-group">
+          <label>¿Se aplicará descuento?</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-discount" value="no" checked onchange="toggleResDcDiscount()"> No</label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-discount" value="si" onchange="toggleResDcDiscount()"> Sí</label>
+          </div>
+        </div>
+        <div id="res-dc-discount-section" style="display:none;margin-bottom:12px">
+          <div class="form-group">
+            <label>Porcentaje de descuento (%)</label>
+            <input type="number" id="res-dc-discount-pct" placeholder="0" min="0" max="100" step="1">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>¿Ingresar monto manualmente?</label>
+          <div style="display:flex;gap:10px;align-items:center">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-manual" value="no" checked onchange="toggleResDcManual()"> No — calcular automáticamente</label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-manual" value="si" onchange="toggleResDcManual()"> Sí — ingresar monto libre</label>
+          </div>
+        </div>
+        <div id="res-dc-manual-section" style="display:none;margin-bottom:12px">
+          <div class="form-group">
+            <label>Monto total a cobrar (S/) *</label>
+            <input type="number" id="res-dc-manual-amount" placeholder="0.00" min="0" step="0.01" style="font-size:16px;font-weight:600">
+          </div>
+        </div>
+        <div id="res-dc-holiday-alert" style="margin-bottom:12px"></div>
+      </div>
+    </div><!-- /res-step-3 -->
+
+    <!-- Wizard footer (mobile only) -->
+    <div id="res-wizard-footer" style="display:none">
+      <div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+        <button id="res-wiz-back" class="btn btn-secondary" style="flex:1" onclick="_resWizStep(-1)">← Anterior</button>
+        <button id="res-wiz-next" class="btn btn-primary" style="flex:1" onclick="_resWizStep(1)">Siguiente →</button>
+        <button id="res-wiz-save" class="btn btn-primary" style="flex:1;display:none" onclick="saveReserva()">✓ Guardar</button>
+      </div>
+      <button style="width:100%;background:none;border:none;color:var(--text-muted);font-size:12px;margin-top:8px;padding:4px;cursor:pointer" onclick="closeModal('modal-reserva')">Cancelar</button>
+    </div>
+    <!-- Desktop footer -->
+    <div class="modal-footer" id="res-desktop-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-reserva')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveReserva()">Guardar reserva</button>
     </div>
