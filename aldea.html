@@ -790,13 +790,18 @@ tr:hover td { background: var(--gray-50); }
       <div id="daily-content"></div>
       <!-- Reservas pendientes para el día seleccionado -->
       <div id="daily-reservas-wrap" style="margin-top:20px"></div>
-      <!-- Escáner de fechas con +20 -->
-      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <span style="font-weight:600;font-size:14px">Análisis de capacidad</span>
-          <button class="btn btn-secondary" onclick="scanOvercapacityDates()">🔍 Ver fechas con +20 en los próximos 365 días</button>
+      <!-- Alerta automática de capacidad -->
+      <div id="daily-capacity-alert" style="margin-top:20px"></div>
+      <!-- Rango de fechas -->
+      <div style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border)">
+        <div style="font-weight:600;font-size:15px;margin-bottom:12px">Resumen por rango de fechas</div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+          <input type="date" id="range-from" style="width:150px">
+          <span style="color:var(--text-muted)">—</span>
+          <input type="date" id="range-to" style="width:150px">
+          <button class="btn btn-secondary btn-sm" onclick="renderDailyRange()">Ver rango</button>
         </div>
-        <div id="daily-overcapacity-wrap" style="margin-top:12px"></div>
+        <div id="daily-range-wrap"></div>
       </div>
     </div>
 
@@ -5634,6 +5639,7 @@ function renderDaily() {
     </div>`;
 
   renderDailyReservas(d);
+  _renderCapacityAlert();
 }
 
 function _getPendingReservasForDate(d) {
@@ -5700,9 +5706,9 @@ function renderDailyReservas(d) {
     </div>`;
 }
 
-function scanOvercapacityDates() {
-  const wrap = document.getElementById('daily-overcapacity-wrap');
-  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px">Escaneando 365 días...</div>';
+function _renderCapacityAlert() {
+  const wrap = document.getElementById('daily-capacity-alert');
+  if (!wrap) return;
 
   const results = [];
   const start = new Date();
@@ -5711,33 +5717,90 @@ function scanOvercapacityDates() {
     d.setDate(start.getDate() + i);
     const ds = d.toISOString().slice(0,10);
     const cap = _getDayCapacityCount(ds);
-    if (cap.total > 20) results.push({ date: ds, ...cap });
+    if (cap.total >= 20) results.push({ date: ds, ...cap });
   }
 
-  if (!results.length) {
-    wrap.innerHTML = '<div style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--green-800)">✅ No hay fechas con más de 20 perros en los próximos 365 días.</div>';
-    return;
-  }
+  if (!results.length) { wrap.innerHTML = ''; return; }
 
   const chips = results.map(r => {
-    const color = r.total > 25 ? 'var(--red-700)' : 'var(--amber-700)';
-    const bg    = r.total > 25 ? 'var(--red-50)'  : 'var(--amber-50)';
-    const border= r.total > 25 ? 'var(--red-200)'  : 'var(--amber-200)';
-    return `<button onclick="jumpToDate('${r.date}')" style="background:${bg};border:1px solid ${border};color:${color};border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:600;text-align:left;min-width:160px">
+    const color  = r.total > 25 ? 'var(--red-700)'   : 'var(--amber-700)';
+    const bg     = r.total > 25 ? 'var(--red-50)'    : 'var(--amber-50)';
+    const border = r.total > 25 ? 'var(--red-200)'   : 'var(--amber-200)';
+    return `<button onclick="jumpToDate('${r.date}')" style="background:${bg};border:1px solid ${border};color:${color};border-radius:8px;padding:7px 12px;cursor:pointer;font-size:13px;font-weight:600;text-align:left">
       <div>${fmtDate(r.date)}</div>
-      <div style="font-size:11px;font-weight:400;margin-top:2px">🏠 ${r.hosted} conf. · ☀️ ${r.dc} dc · 📋 ${r.resHosp+r.resDc} res. · <strong>Total: ${r.total}</strong></div>
+      <div style="font-size:11px;font-weight:400;margin-top:2px">🏠 ${r.hosted} · ☀️ ${r.dc} · 📋 ${r.resHosp+r.resDc} res. · <strong>${r.total} perros</strong></div>
     </button>`;
   }).join('');
 
   wrap.innerHTML = `
-    <div style="font-size:13px;color:var(--text-muted);margin-bottom:10px">Se encontraron <strong style="color:var(--red-800)">${results.length}</strong> fechas con más de 20 perros. Tocá una para ver el detalle:</div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px">${chips}</div>`;
+    <div style="background:var(--red-50);border:1px solid var(--red-200);border-radius:10px;padding:14px 16px">
+      <div style="font-weight:600;font-size:14px;color:var(--red-800);margin-bottom:10px">⚠️ ${results.length} fecha(s) con 20+ perros en los próximos 365 días</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${chips}</div>
+    </div>`;
 }
 
 function jumpToDate(d) {
   document.getElementById('daily-date').value = d;
   renderDaily();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function renderDailyRange() {
+  const from = document.getElementById('range-from').value;
+  const to   = document.getElementById('range-to').value;
+  const wrap = document.getElementById('daily-range-wrap');
+  if (!from || !to || from > to) {
+    wrap.innerHTML = '<p class="text-muted text-sm">Seleccioná un rango válido.</p>';
+    return;
+  }
+
+  const rows = [];
+  const cur = new Date(from + 'T00:00:00');
+  const end = new Date(to   + 'T00:00:00');
+  while (cur <= end) {
+    const ds = cur.toISOString().slice(0,10);
+    const hosted  = getHostedDogs(ds).length;
+    const dc      = getDaycareDogs(ds).length;
+    const leaving = getLeavingDogs(ds).length;
+    const { hosp: rh, dc: rd } = _getPendingReservasForDate(ds);
+    const total = hosted + dc + rh.length + rd.length;
+    const dow = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][cur.getDay()];
+    rows.push({ date: ds, dow, hosted, dc, resHosp: rh.length, resDc: rd.length, leaving, total });
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const rowsHTML = rows.map(r => {
+    const bg = r.total > 25 ? 'background:#FCEBEB'
+             : r.total >= 20 ? 'background:#FAEEDA'
+             : '';
+    const totalStyle = r.total > 25 ? 'color:#A32D2D;font-weight:600'
+                     : r.total >= 20 ? 'color:#854F0B;font-weight:600'
+                     : '';
+    const isWeekend = r.dow === 'Sáb' || r.dow === 'Dom';
+    return `<tr style="${bg};cursor:pointer" onclick="jumpToDate('${r.date}')" title="Ver detalle">
+      <td style="color:var(--link-color,#185FA5)">${fmtDate(r.date)}</td>
+      <td style="text-align:center;color:${isWeekend ? '#A32D2D' : 'var(--text-muted)'};font-weight:${isWeekend?'600':'400'}">${r.dow}</td>
+      <td style="text-align:center">${r.hosted}</td>
+      <td style="text-align:center">${r.dc}</td>
+      <td style="text-align:center">${r.resHosp + r.resDc}</td>
+      <td style="text-align:center">${r.leaving}</td>
+      <td style="text-align:center;${totalStyle}">${r.total}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;font-size:13px">
+    <thead><tr>
+      <th>Fecha</th>
+      <th style="text-align:center">Día</th>
+      <th style="text-align:center">Hospedados</th>
+      <th style="text-align:center">Daycare</th>
+      <th style="text-align:center">Reservas</th>
+      <th style="text-align:center">Salidas</th>
+      <th style="text-align:center">Total</th>
+    </tr></thead>
+    <tbody>${rowsHTML}</tbody>
+  </table></div>
+  <div style="font-size:12px;color:var(--text-muted);margin-top:8px">Tocá una fila para ver el detalle del día. <span style="background:#FAEEDA;padding:1px 6px;border-radius:4px;color:#854F0B">Amarillo</span> = 20–25 perros · <span style="background:#FCEBEB;padding:1px 6px;border-radius:4px;color:#A32D2D">Rojo</span> = 26+ perros</div>`;
 }
 
 function printDaily() {
@@ -5952,7 +6015,8 @@ function setIncomePeriod(mode) {
 function renderIncome() {
   const { from, to } = _incomeFilter;
   const inRange = date => (!from || date >= from) && (!to || date <= to);
-  const overlapsPeriod = s => (!from || s.check_out_date >= from) && (!to || s.check_in_date <= to);
+  const effectiveOut = s => (s.open_ended || !s.check_out_date) ? '9999-12-31' : s.check_out_date;
+  const overlapsPeriod = s => (!from || effectiveOut(s) >= from) && (!to || s.check_in_date <= to);
 
   const allStaysRaw = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allStays    = allStaysRaw.filter(overlapsPeriod);
@@ -5985,22 +6049,26 @@ function renderIncome() {
                         + allRest.reduce((s,r) => s + r.total, 0)
                         + totalResProyectado;
   const totalPagado = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
-  const totalPendiente = allStays.reduce((s,x) => s + getPendingAmount(x), 0)
-                       + allRest.filter(r => !r.paid).reduce((s,r) => s + r.total, 0)
-                       + pendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
-  const deudores = allStays.filter(s => getPendingAmount(s) > 0).length
-                 + new Set(allRest.filter(r => !r.paid).map(r => r.dog_id)).size;
+
+  // Pendiente de cobro es GLOBAL — todos los que deben plata hoy, sin importar el período
+  const allStaysGlobal = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  const allRestGlobal  = DB.restaurant;
+  const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente');
+  const totalPendiente = allStaysGlobal.reduce((s,x) => s + getPendingAmount(x), 0)
+                       + allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0)
+                       + allPendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
+  const deudores = allStaysGlobal.filter(s => getPendingAmount(s) > 0).length
+                 + new Set(allRestGlobal.filter(r => !r.paid).map(r => r.dog_id)).size;
 
   document.getElementById('income-stats').innerHTML = `
     <div class="stat-card coral"><div class="stat-label">Pendiente de cobro</div><div class="stat-value">${fmtMoney(totalPendiente)}</div><div class="stat-sub">${deudores} estadía(s)${pendingRes.length ? ` + ${pendingRes.length} reserva(s)` : ''}</div></div>
     <div class="stat-card green"><div class="stat-label">Cobrado en el período</div><div class="stat-value">${fmtMoney(totalPagado)}</div><div class="stat-sub">pagos${totalResAdv > 0 ? ` · ${fmtMoney(totalResAdv)} adelantos reservas` : ''}</div></div>
-    <div class="stat-card teal"><div class="stat-label">Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalProyectado)}</div><div class="stat-sub">estadías${pendingRes.length ? ` + ${pendingRes.length} reserva(s)` : ''}</div></div>
+    <div class="stat-card teal"><div class="stat-label">Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalPagado + totalPendiente)}</div><div class="stat-sub">cobrado + pendiente</div></div>
     <div class="stat-card amber"><div class="stat-label">Con deuda</div><div class="stat-value">${deudores}</div><div class="stat-sub">perro(s)</div></div>
-    ${totalFueraPeriodo > 0 ? `<div class="stat-card" style="background:#7c3aed;color:#fff"><div class="stat-label" style="color:rgba(255,255,255,0.8)">Cobrado fuera del período</div><div class="stat-value">${fmtMoney(totalFueraPeriodo)}</div><div class="stat-sub" style="color:rgba(255,255,255,0.7)">pagos de estadías del período</div></div>` : ''}
     ${pendingRes.length ? `<div class="stat-card" style="background:var(--green-700);color:#fff"><div class="stat-label" style="color:rgba(255,255,255,0.8)">Reservas pendientes</div><div class="stat-value">${fmtMoney(totalResProyectado)}</div><div class="stat-sub" style="color:rgba(255,255,255,0.7)">${pendingRes.length} reserva(s) en el período</div></div>` : ''}`;
 
   // TAB: PENDIENTE
-  const pendStays = allStays.filter(s => getPendingAmount(s) > 0).sort((a,b) => a.check_out_date.localeCompare(b.check_out_date));
+  const pendStays = allStaysGlobal.filter(s => getPendingAmount(s) > 0).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
   document.getElementById('income-pendiente-wrap').innerHTML = pendStays.length ? `<table>
     <thead><tr><th>Perro</th><th>Salida</th><th>Total estadía</th><th>Pagado</th><th>Pendiente</th><th></th></tr></thead>
     <tbody>${pendStays.map(s => {
