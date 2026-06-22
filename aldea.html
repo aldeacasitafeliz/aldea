@@ -2070,8 +2070,8 @@ tr:hover td { background: var(--gray-50); }
             </select>
           </div>
         </div>
-        <div class="form-group">
-          <label>Hasta *</label>
+        <div class="form-group" id="asgn-to-dt-wrap">
+          <label id="asgn-to-dt-label">Hasta *</label>
           <div style="display:grid;grid-template-columns:1fr 44px 8px 44px 62px;gap:4px;align-items:center">
             <input type="date" id="asgn-to-dt-date" class="form-control">
             <input type="number" id="asgn-to-dt-h" min="1" max="12" value="8" class="form-control" style="padding:6px 4px;text-align:center" oninput="clampDTHour(this)">
@@ -2081,6 +2081,9 @@ tr:hover td { background: var(--gray-50); }
               <option value="a.m.">a.m.</option>
               <option value="p.m.">p.m.</option>
             </select>
+          </div>
+          <div id="asgn-open-ended-note" style="display:none;font-size:12px;color:var(--green-700);margin-top:4px">
+            📌 Estadía indefinida — esta cuidadora quedará vigente hasta que se registre un cambio.
           </div>
         </div>
         <div class="form-group">
@@ -7478,14 +7481,22 @@ function deleteVacation(id) {
 let _asgnRefId = null, _asgnType = null, _asgnDogId = null, _asgnServiceFrom = null, _asgnServiceTo = null;
 let changingAssignmentId = null;
 
+const OPEN_ENDED_DATE = '9999-12-31';
 function _getServiceBounds(refId, type) {
   if (type === 'hospedaje') {
     const s = DB.stays.find(x => x.id === refId);
-    return s ? { dogId: s.dog_id, from: s.check_in_date, to: s.check_out_date } : null;
+    if (!s) return null;
+    const to = (s.open_ended || !s.check_out_date) ? OPEN_ENDED_DATE : s.check_out_date;
+    return { dogId: s.dog_id, from: s.check_in_date, to, open_ended: s.open_ended || !s.check_out_date };
   } else {
     const d = DB.daycares.find(x => x.id === refId);
     return d ? { dogId: d.dog_id, from: d.date, to: d.date } : null;
   }
+}
+function _fmtAsgnDate(dt) {
+  if (!dt) return '?';
+  if (dt.startsWith('9999')) return 'en adelante (indefinida)';
+  return dt.replace('T', ' ');
 }
 
 function renderAsgnTimeline() {
@@ -7504,9 +7515,13 @@ function renderAsgnTimeline() {
   let html = `<div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px">Cobertura actual</div>
     <div style="display:flex;flex-direction:column;gap:4px">`;
   asgns.forEach(a => {
-    html += `<div style="display:flex;align-items:center;gap:8px;background:var(--gray-50);border-radius:6px;padding:7px 10px;font-size:13px">
+    const toLabel = _fmtAsgnDate(a.to_dt);
+    const fromLabel = _fmtAsgnDate(a.from_dt);
+    const isIndefinite = (a.to_dt||'').startsWith('9999');
+    html += `<div style="display:flex;align-items:center;gap:8px;background:${isIndefinite?'var(--green-50)':'var(--gray-50)'};border:1px solid ${isIndefinite?'var(--green-200)':'transparent'};border-radius:6px;padding:7px 10px;font-size:13px">
       <span style="flex:1"><strong>${ctName(a.caretaker_id)}</strong>
-        <span class="text-muted text-sm" style="margin-left:8px">${(a.from_dt||'').replace('T',' ')} → ${(a.to_dt||'').replace('T',' ')}</span>
+        <span class="text-muted text-sm" style="margin-left:8px">${fromLabel} → <strong style="color:${isIndefinite?'var(--green-700)':'inherit'}">${toLabel}</strong></span>
+        ${isIndefinite?'<span class="chip" style="background:var(--green-100);color:var(--green-800);margin-left:4px">vigente</span>':''}
         ${a.user?`<span class="chip" style="margin-left:6px">por ${a.user}</span>`:''}
         ${a.notes?`<span class="text-muted text-sm"> · ${a.notes}</span>`:''}
       </span>
@@ -7586,7 +7601,7 @@ function openAssignmentChangeModal(refId, type) {
   document.getElementById('asgn-modal-title').textContent =
     `Cuidadoras — ${dog?.name||'?'} ${dog?.owner_last_name||''} (${type==='hospedaje'?'Hospedaje':'Daycare'})`;
   document.getElementById('asgn-info').innerHTML =
-    `${type==='hospedaje'?'🏠 Hospedaje':'☀️ Daycare'} · ${fmtDate(bounds.from)} → ${fmtDate(bounds.to)}`;
+    `${type==='hospedaje'?'🏠 Hospedaje':'☀️ Daycare'} · ${fmtDate(bounds.from)} → ${bounds.open_ended ? '<strong style="color:var(--green-700)">sin fecha de salida (indefinida)</strong>' : fmtDate(bounds.to)}`;
   document.getElementById('asgn-alerts').innerHTML = '';
   document.getElementById('asgn-user').value = '';
   document.getElementById('asgn-reason').value = '';
@@ -7596,8 +7611,24 @@ function openAssignmentChangeModal(refId, type) {
   // Default dates: first uncovered gap or full range
   const gaps = getAsgnGaps(refId, type, bounds.from, bounds.to);
   const firstGap = gaps[0];
+  const defaultTo = bounds.open_ended ? OPEN_ENDED_DATE + 'T23:59' : (bounds.to + 'T23:59');
   writeDT('asgn-from-dt', firstGap ? firstGap.from : bounds.from + 'T00:00');
-  writeDT('asgn-to-dt', firstGap ? firstGap.to : bounds.to + 'T23:59');
+  writeDT('asgn-to-dt', firstGap ? firstGap.to : defaultTo);
+  // Show/hide to-date field for open-ended stays
+  const toWrap = document.getElementById('asgn-to-dt-wrap');
+  const openEndedNote = document.getElementById('asgn-open-ended-note');
+  const toLabel = document.getElementById('asgn-to-dt-label');
+  if (bounds.open_ended) {
+    if (toLabel) toLabel.textContent = 'Vigente hasta (dejar vacío = indefinida)';
+    if (openEndedNote) openEndedNote.style.display = '';
+    // Clear the to date fields so they show empty = indefinite
+    writeDT('asgn-to-dt', OPEN_ENDED_DATE + 'T23:59');
+    const toDateInput = document.getElementById('asgn-to-dt-date');
+    if (toDateInput) toDateInput.value = '';
+  } else {
+    if (toLabel) toLabel.textContent = 'Hasta *';
+    if (openEndedNote) openEndedNote.style.display = 'none';
+  }
 
   const sel = document.getElementById('asgn-new-ct');
   sel.innerHTML = '<option value="">— Seleccionar cuidadora —</option>' +
@@ -7612,7 +7643,8 @@ function openAssignmentChangeModal(refId, type) {
 function saveAssignmentChange() {
   const newCtId = parseInt(document.getElementById('asgn-new-ct').value);
   const fromDt = readDT('asgn-from-dt');
-  const toDt   = readDT('asgn-to-dt');
+  const toDateRaw = document.getElementById('asgn-to-dt-date')?.value;
+  const toDt = (!toDateRaw) ? (OPEN_ENDED_DATE + 'T23:59') : readDT('asgn-to-dt');
   const user    = document.getElementById('asgn-user').value.trim();
   const notes   = document.getElementById('asgn-reason').value.trim();
   const alertEl = document.getElementById('asgn-alerts');
@@ -9930,6 +9962,18 @@ function toggleResDiscount() {
   document.getElementById('res-discount-section').style.display =
     document.querySelector('input[name="res-discount"]:checked').value === 'si' ? '' : 'none';
 }
+function toggleResDcAdvance() {
+  document.getElementById('res-dc-advance-section').style.display =
+    document.querySelector('input[name="res-dc-advance"]:checked').value === 'si' ? '' : 'none';
+}
+function toggleResDcDiscount() {
+  document.getElementById('res-dc-discount-section').style.display =
+    document.querySelector('input[name="res-dc-discount"]:checked').value === 'si' ? '' : 'none';
+}
+function toggleResDcManual() {
+  document.getElementById('res-dc-manual-section').style.display =
+    document.querySelector('input[name="res-dc-manual"]:checked').value === 'si' ? '' : 'none';
+}
 
 // Dog autocomplete for reserva hospedaje
 let _resDogActive = -1;
@@ -10039,8 +10083,16 @@ function saveReserva() {
     const date = document.getElementById('res-date').value;
     const rate = parseFloat(document.getElementById('res-rate-d').value);
     if (!date || !rate) { alerts.innerHTML = '<div class="alert alert-danger">Completá fecha y tarifa.</div>'; return; }
+    const dcAdvAmt = document.querySelector('input[name="res-dc-advance"]:checked')?.value === 'si'
+      ? parseFloat(document.getElementById('res-dc-advance-amount').value) || 0 : 0;
+    const dcDiscPct = document.querySelector('input[name="res-dc-discount"]:checked')?.value === 'si'
+      ? parseFloat(document.getElementById('res-dc-discount-pct').value) || 0 : 0;
+    const dcManual = document.querySelector('input[name="res-dc-manual"]:checked')?.value === 'si'
+      ? parseFloat(document.getElementById('res-dc-manual-amount').value) || null : null;
     obj = { type: 'daycare', dog_id: dogId, date, rate,
-      notes: document.getElementById('res-dc-notes').value, status };
+      notes: document.getElementById('res-dc-notes').value,
+      advance_amount: dcAdvAmt || undefined, discount_pct: dcDiscPct || undefined,
+      manual_total: dcManual || undefined, status };
   }
   const arr = DB.reservas;
   if (_editingReservaId) {
@@ -10079,7 +10131,15 @@ function activateReserva(id) {
     DB.saveStays(stays);
   } else {
     const dcs = DB.daycares;
-    dcs.push({ id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate, notes: r.notes, advance_paid: false });
+    const newDc = { id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
+      notes: r.notes, advance_paid: !!r.advance_amount,
+      discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined };
+    dcs.push(newDc);
+    if (r.advance_amount > 0) {
+      const pmts = DB.payments;
+      pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: r.advance_amount, date: today(), notes: 'Adelanto desde reserva daycare' });
+      DB.savePayments(pmts);
+    }
     DB.saveDaycares(dcs);
   }
   const arr = DB.reservas;
@@ -10497,6 +10557,48 @@ function deleteIntegration(id) {
         <div class="form-group span2">
           <label>Observaciones</label>
           <textarea id="res-dc-notes" rows="2"></textarea>
+        </div>
+      </div>
+      <!-- Adelanto daycare -->
+      <div class="form-group">
+        <label>¿Hubo pago adelantado?</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-advance" value="no" checked onchange="toggleResDcAdvance()"> No</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-advance" value="si" onchange="toggleResDcAdvance()"> Sí</label>
+        </div>
+      </div>
+      <div id="res-dc-advance-section" style="display:none;margin-bottom:12px">
+        <div class="form-group">
+          <label>Monto adelantado (S/)</label>
+          <input type="number" id="res-dc-advance-amount" placeholder="0.00" min="0" step="0.01">
+        </div>
+      </div>
+      <!-- Descuento daycare -->
+      <div class="form-group">
+        <label>¿Se aplicará descuento?</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-discount" value="no" checked onchange="toggleResDcDiscount()"> No</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-discount" value="si" onchange="toggleResDcDiscount()"> Sí</label>
+        </div>
+      </div>
+      <div id="res-dc-discount-section" style="display:none;margin-bottom:12px">
+        <div class="form-group">
+          <label>Porcentaje de descuento (%)</label>
+          <input type="number" id="res-dc-discount-pct" placeholder="0" min="0" max="100" step="1">
+        </div>
+      </div>
+      <!-- Manual daycare -->
+      <div class="form-group">
+        <label>¿Ingresar monto manualmente?</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-manual" value="no" checked onchange="toggleResDcManual()"> No — calcular automáticamente</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-dc-manual" value="si" onchange="toggleResDcManual()"> Sí — ingresar monto libre</label>
+        </div>
+      </div>
+      <div id="res-dc-manual-section" style="display:none;margin-bottom:12px">
+        <div class="form-group">
+          <label>Monto total a cobrar (S/) *</label>
+          <input type="number" id="res-dc-manual-amount" placeholder="0.00" min="0" step="0.01" style="font-size:16px;font-weight:600">
         </div>
       </div>
     </div>
