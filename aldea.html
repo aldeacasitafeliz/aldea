@@ -5845,6 +5845,16 @@ function renderIncome() {
   const allRestRaw  = DB.restaurant;
   const allRest     = allRestRaw.filter(r => inRange(r.date));
 
+  // Reservas pendientes (no activadas, no caídas) en el período
+  const overlapsPeriodRes = r => {
+    if (r.type === 'hospedaje') return (!from || (r.check_out_date || r.reserved_from) >= from) && (!to || r.reserved_from <= to);
+    return inRange(r.date);
+  };
+  const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r));
+  // Adelantos cobrados de reservas no activadas (pendientes o caídas) — son ingresos reales
+  const resWithAdv = DB.reservas.filter(r => r.status !== 'activa' && _reservaAdvanceTotal(r) > 0 && overlapsPeriodRes(r));
+  const totalResAdv = resWithAdv.reduce((s,r) => s + _reservaAdvanceTotal(r), 0);
+
   // Cobrado = payments whose date falls IN the period
   const paymentsInPeriod  = DB.payments.filter(p => inRange(p.date) && allStays.some(s => s.id === p.stay_id));
   const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && allStays.some(s => s.id === p.stay_id));
@@ -5852,21 +5862,26 @@ function renderIncome() {
   const totalFueraPeriodo = paymentsOutPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
   const dcCobrado   = allDcs.reduce((s,d) => s + calcDaycareTotal(d), 0);
   const restCobrado = allRest.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
+
+  const totalResProyectado = pendingRes.reduce((s,r) => s + calcReservaTotal(r), 0);
   const totalProyectado = allStays.reduce((s,x) => s + calcStayTotal(x), 0)
                         + allDcs.reduce((s,d) => s + calcDaycareTotal(d), 0)
-                        + allRest.reduce((s,r) => s + r.total, 0);
-  const totalPagado = totalCobradoHosp + dcCobrado + restCobrado;
+                        + allRest.reduce((s,r) => s + r.total, 0)
+                        + totalResProyectado;
+  const totalPagado = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
   const totalPendiente = allStays.reduce((s,x) => s + getPendingAmount(x), 0)
-                       + allRest.filter(r => !r.paid).reduce((s,r) => s + r.total, 0);
+                       + allRest.filter(r => !r.paid).reduce((s,r) => s + r.total, 0)
+                       + pendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
   const deudores = allStays.filter(s => getPendingAmount(s) > 0).length
                  + new Set(allRest.filter(r => !r.paid).map(r => r.dog_id)).size;
 
   document.getElementById('income-stats').innerHTML = `
-    <div class="stat-card coral"><div class="stat-label">Pendiente de cobro</div><div class="stat-value">${fmtMoney(totalPendiente)}</div><div class="stat-sub">${deudores} estadía(s)</div></div>
-    <div class="stat-card green"><div class="stat-label">Cobrado en el período</div><div class="stat-value">${fmtMoney(totalPagado)}</div><div class="stat-sub">pagos con fecha en el período</div></div>
-    <div class="stat-card teal"><div class="stat-label">Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalProyectado)}</div><div class="stat-sub">total estadías del período</div></div>
+    <div class="stat-card coral"><div class="stat-label">Pendiente de cobro</div><div class="stat-value">${fmtMoney(totalPendiente)}</div><div class="stat-sub">${deudores} estadía(s)${pendingRes.length ? ` + ${pendingRes.length} reserva(s)` : ''}</div></div>
+    <div class="stat-card green"><div class="stat-label">Cobrado en el período</div><div class="stat-value">${fmtMoney(totalPagado)}</div><div class="stat-sub">pagos${totalResAdv > 0 ? ` · ${fmtMoney(totalResAdv)} adelantos reservas` : ''}</div></div>
+    <div class="stat-card teal"><div class="stat-label">Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalProyectado)}</div><div class="stat-sub">estadías${pendingRes.length ? ` + ${pendingRes.length} reserva(s)` : ''}</div></div>
     <div class="stat-card amber"><div class="stat-label">Con deuda</div><div class="stat-value">${deudores}</div><div class="stat-sub">perro(s)</div></div>
-    ${totalFueraPeriodo > 0 ? `<div class="stat-card" style="background:#7c3aed;color:#fff"><div class="stat-label" style="color:rgba(255,255,255,0.8)">Cobrado fuera del período</div><div class="stat-value">${fmtMoney(totalFueraPeriodo)}</div><div class="stat-sub" style="color:rgba(255,255,255,0.7)">pagos de estadías del período</div></div>` : ''}`;
+    ${totalFueraPeriodo > 0 ? `<div class="stat-card" style="background:#7c3aed;color:#fff"><div class="stat-label" style="color:rgba(255,255,255,0.8)">Cobrado fuera del período</div><div class="stat-value">${fmtMoney(totalFueraPeriodo)}</div><div class="stat-sub" style="color:rgba(255,255,255,0.7)">pagos de estadías del período</div></div>` : ''}
+    ${pendingRes.length ? `<div class="stat-card" style="background:var(--green-700);color:#fff"><div class="stat-label" style="color:rgba(255,255,255,0.8)">Reservas pendientes</div><div class="stat-value">${fmtMoney(totalResProyectado)}</div><div class="stat-sub" style="color:rgba(255,255,255,0.7)">${pendingRes.length} reserva(s) en el período</div></div>` : ''}`;
 
   // TAB: PENDIENTE
   const pendStays = allStays.filter(s => getPendingAmount(s) > 0).sort((a,b) => a.check_out_date.localeCompare(b.check_out_date));
@@ -10419,22 +10434,47 @@ function saveReserva() {
   renderReservasPage();
 }
 
+// Estimate total for a pending reserva (same logic as calcStayTotal / calcDaycareTotal)
+function calcReservaTotal(r) {
+  if (!r) return 0;
+  if (r.type === 'hospedaje') {
+    return calcStayTotal({
+      daily_rate: r.rate, rate_type: r.rate_type || 'nightly',
+      check_in_date: r.reserved_from, check_out_date: r.check_out_date,
+      open_ended: r.open_ended, is_exchange: !!r.is_exchange,
+      discount_pct: r.discount_pct || 0, late_pickup: false,
+      custom_holidays: r.custom_holidays, manual_total: r.manual_total
+    });
+  } else {
+    const dcHols = r.dc_holiday ? getHolidaysInRange(r.date, r.date) : [];
+    return calcDaycareTotal({
+      rate: r.rate, discount_pct: r.discount_pct || 0,
+      manual_total: r.manual_total, date: r.date,
+      custom_holidays: dcHols
+    });
+  }
+}
+
+function _reservaAdvanceTotal(r) {
+  if (r.advance_payments?.length) return r.advance_payments.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+  return parseFloat(r.advance_amount) || 0;
+}
+
 function activateReserva(id) {
   const r = DB.reservas.find(x => x.id === id);
   if (!r) return;
-  // Create the actual stay or daycare
   if (r.type === 'hospedaje') {
     const stays = DB.stays;
     const newStay = {
       id: DB.nextId(stays), dog_id: r.dog_id, check_in_date: r.reserved_from,
-      check_out_date: r.check_out_date, open_ended: r.open_ended, rate: r.rate,
-      rate_type: r.rate_type, service_type: 'hospedaje', status: 'activo',
+      check_out_date: r.check_out_date, open_ended: r.open_ended,
+      daily_rate: r.rate,   // ← correct field name used by calcStayBaseTotal
+      rate_type: r.rate_type || 'nightly', service_type: 'hospedaje', status: 'activo',
       notes: r.notes, is_exchange: !!r.is_exchange, late_pickup: false,
       discount_pct: r.discount_pct || 0,
       custom_holidays: r.custom_holidays
     };
     stays.push(newStay);
-    // Register all advance payments
     const advPmts = r.advance_payments?.length ? r.advance_payments
       : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
     if (advPmts.length) {
@@ -10447,10 +10487,12 @@ function activateReserva(id) {
     DB.saveStays(stays);
   } else {
     const dcs = DB.daycares;
+    // Translate dc_holiday boolean → custom_holidays array for calcDaycareBaseTotal
+    const dcHols = r.dc_holiday ? getHolidaysInRange(r.date, r.date) : [];
     const newDc = { id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
       notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
       discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined,
-      use_holiday: r.dc_holiday };
+      custom_holidays: dcHols };
     dcs.push(newDc);
     const dcAdvPmts = r.advance_payments?.length ? r.advance_payments
       : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
@@ -10464,8 +10506,9 @@ function activateReserva(id) {
     DB.saveDaycares(dcs);
   }
   const arr = DB.reservas;
-  arr.find(x => x.id === id).status = 'activa';
-  arr.find(x => x.id === id).activated_at = new Date().toISOString();
+  const res = arr.find(x => x.id === id);
+  res.status = 'activa';
+  res.activated_at = new Date().toISOString();
   DB.saveReservas(arr);
   renderReservasPage();
   if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
