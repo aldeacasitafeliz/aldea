@@ -8057,6 +8057,10 @@ function renderCaretakersSummary() {
   const totalFd = fdShifts.length || 1;
   const totalPh = phShifts.length || 1;
 
+  // Integration stats per caretaker in date range
+  const integsInRange = DB.integrations.filter(i => i.result !== 'pendiente' && (!from || i.date >= from) && (!to || i.date <= to));
+  const totalIntegParticipations = Math.max(1, integsInRange.reduce((s, i) => s + (i.caretaker_ids||[]).length, 0));
+
   const rows = cts.map(c => {
     const cH = asgnCountInRange(c.id, 'hospedaje', from, to);
     const cD = asgnCountInRange(c.id, 'daycare', from, to);
@@ -8068,7 +8072,13 @@ function renderCaretakersSummary() {
     const ph = phShifts.filter(p => p.caretaker_id === c.id).length;
     const onVac = isCaretakerOnVacation(c.id);
     const statusMark = onVac ? ' 🏖' : c.status === 'inactiva' ? ' ⚫' : '';
-    return { c, cH, cD, cAll, pctH, pctD, pctAll, fd, ph, onVac, statusMark };
+    // Integrations
+    const myIntegs = integsInRange.filter(i => (i.caretaker_ids||[]).includes(c.id));
+    const integCount = myIntegs.length;
+    const integAcc = myIntegs.filter(i => i.result === 'aceptado').length;
+    const integPct = integCount > 0 ? (integAcc / integCount * 100).toFixed(0) + '%' : '—';
+    const integPctAll = (integCount / totalIntegParticipations * 100).toFixed(0) + '%';
+    return { c, cH, cD, cAll, pctH, pctD, pctAll, fd, ph, onVac, statusMark, integCount, integAcc, integPct, integPctAll };
   });
 
   el.innerHTML = `
@@ -8081,6 +8091,7 @@ function renderCaretakersSummary() {
           <th style="text-align:center">Daycare</th><th style="text-align:center">%</th>
           <th style="text-align:center">Total</th><th style="text-align:center">%</th>
           <th style="text-align:center">Comida</th><th style="text-align:center">Teléfono</th>
+          <th style="text-align:center">Integraciones</th><th style="text-align:center">% acept.</th>
           <th></th>
         </tr></thead>
         <tbody>
@@ -8094,6 +8105,8 @@ function renderCaretakersSummary() {
           <td style="text-align:center"><span class="chip">${r.pctAll}%</span></td>
           <td style="text-align:center">${r.fd} <span class="text-muted text-sm">(${(r.fd/totalFd*100).toFixed(0)}%)</span></td>
           <td style="text-align:center">${r.ph} <span class="text-muted text-sm">(${(r.ph/totalPh*100).toFixed(0)}%)</span></td>
+          <td style="text-align:center">${r.integCount > 0 ? `<strong>${r.integCount}</strong> <span class="text-muted text-sm">(${r.integPctAll} del total)</span>` : '<span class="text-muted">—</span>'}</td>
+          <td style="text-align:center">${r.integCount > 0 ? `✅ ${r.integAcc} <span class="chip" style="background:var(--green-50);color:var(--green-800)">${r.integPct}</span>` : '<span class="text-muted">—</span>'}</td>
           <td><button class="btn btn-secondary btn-sm" onclick="renderCaretakerDetail(${r.c.id})">Ver detalle</button></td>
         </tr>`).join('')}
         </tbody>
@@ -10135,34 +10148,61 @@ function _showPostIntegOptions(dogId) {
   openModal('modal-post-integ');
 }
 
-function postIntegGoStay() {
-  closeModal('modal-post-integ');
-  showPage('stays');
-  setTimeout(() => {
-    openStayModal();
-    setTimeout(() => {
-      const sel = document.getElementById('stay-dog');
-      if (sel) { sel.value = window._postIntegDogId; sel.dispatchEvent(new Event('change')); }
-      const dogInput = document.getElementById('stay-dog-input');
-      const dog = DB.getDog(window._postIntegDogId);
-      if (dogInput && dog) dogInput.value = dog.name + ' ' + (dog.owner_last_name||'');
-    }, 100);
-  }, 100);
+let _postIntegMode = 'directo';
+
+function _postIntegSelectMode(mode) {
+  _postIntegMode = mode;
+  document.getElementById('post-integ-step1').style.display = 'none';
+  document.getElementById('post-integ-step2').style.display = '';
+  document.getElementById('post-integ-step2-label').textContent =
+    mode === 'directo' ? '¿Qué servicio va a usar?' : '¿Para qué servicio es la reserva?';
 }
 
-function postIntegGoDaycare() {
+function _postIntegGoService(service) {
   closeModal('modal-post-integ');
-  showPage('daycare');
+  // Reset steps for next time
   setTimeout(() => {
-    openDaycareModal();
+    document.getElementById('post-integ-step1').style.display = '';
+    document.getElementById('post-integ-step2').style.display = 'none';
+  }, 300);
+  const dog = DB.getDog(window._postIntegDogId);
+  const dogLabel = dog ? dog.name + ' ' + (dog.owner_last_name||'') : '';
+  if (_postIntegMode === 'directo') {
+    if (service === 'hospedaje') {
+      showPage('stays');
+      setTimeout(() => {
+        openStayModal();
+        setTimeout(() => {
+          const dogInput = document.getElementById('stay-dog-input');
+          const sel = document.getElementById('stay-dog');
+          if (dogInput) dogInput.value = dogLabel;
+          if (sel) { sel.value = window._postIntegDogId; sel.dispatchEvent(new Event('change')); }
+        }, 100);
+      }, 100);
+    } else {
+      showPage('daycare');
+      setTimeout(() => {
+        openDaycareModal();
+        setTimeout(() => {
+          const dcInput = document.getElementById('dc-dog-input');
+          const sel = document.getElementById('dc-dog');
+          if (dcInput) dcInput.value = dogLabel;
+          if (sel) { sel.value = window._postIntegDogId; sel.dispatchEvent(new Event('change')); }
+        }, 100);
+      }, 100);
+    }
+  } else {
+    // Reserva
+    showPage('reservas');
     setTimeout(() => {
-      const sel = document.getElementById('dc-dog');
-      if (sel) { sel.value = window._postIntegDogId; sel.dispatchEvent(new Event('change')); }
-      const dcInput = document.getElementById('dc-dog-input');
-      const dog = DB.getDog(window._postIntegDogId);
-      if (dcInput && dog) dcInput.value = dog.name + ' ' + (dog.owner_last_name||'');
+      openReservaModal();
+      setTimeout(() => {
+        const sel = document.getElementById('res-dog');
+        if (sel) sel.value = window._postIntegDogId;
+        if (service === 'daycare') _setReservaType('daycare');
+      }, 100);
     }, 100);
-  }, 100);
+  }
 }
 
 function prefillDogFromInteg(id) {
@@ -10375,22 +10415,43 @@ function deleteIntegration(id) {
 
 <!-- Modal post-integración -->
 <div class="modal-overlay" id="modal-post-integ">
-  <div class="modal" style="max-width:420px;text-align:center">
+  <div class="modal" style="max-width:440px;text-align:center">
     <div style="font-size:36px;margin-bottom:8px">🎉</div>
     <div class="modal-title" style="justify-content:center">¡Perro registrado!</div>
-    <p style="color:var(--text-muted);font-size:14px;margin:0 0 24px">
-      <strong id="post-integ-dog-name"></strong> fue agregado exitosamente.<br>¿Qué querés hacer ahora?
+    <p style="color:var(--text-muted);font-size:14px;margin:0 0 20px">
+      <strong id="post-integ-dog-name"></strong> fue agregado exitosamente.
     </p>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="postIntegGoStay()">
-        🏠 Registrar hospedaje
-      </button>
-      <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="postIntegGoDaycare()">
-        ☀️ Registrar daycare
-      </button>
-      <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;justify-content:center;color:var(--text-muted)" onclick="closeModal('modal-post-integ')">
-        Cerrar
-      </button>
+
+    <!-- Paso 1: Directo o Reserva -->
+    <div id="post-integ-step1">
+      <p style="font-size:14px;font-weight:600;margin:0 0 14px">¿Cómo va a ingresar?</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="_postIntegSelectMode('directo')">
+          🚀 Ingreso directo — registrar ahora
+        </button>
+        <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="_postIntegSelectMode('reserva')">
+          📌 Hacer una reserva
+        </button>
+        <button class="btn btn-secondary" style="width:100%;padding:12px;font-size:14px;justify-content:center;color:var(--text-muted)" onclick="closeModal('modal-post-integ')">
+          Cerrar
+        </button>
+      </div>
+    </div>
+
+    <!-- Paso 2: Hospedaje o Daycare -->
+    <div id="post-integ-step2" style="display:none">
+      <p style="font-size:14px;font-weight:600;margin:0 0 14px" id="post-integ-step2-label">¿Qué servicio?</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="_postIntegGoService('hospedaje')">
+          🏠 Hospedaje
+        </button>
+        <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="_postIntegGoService('daycare')">
+          ☀️ Daycare
+        </button>
+        <button class="btn btn-secondary" style="width:100%;padding:12px;font-size:14px;justify-content:center;color:var(--text-muted)" onclick="document.getElementById('post-integ-step1').style.display='';document.getElementById('post-integ-step2').style.display='none'">
+          ← Atrás
+        </button>
+      </div>
     </div>
   </div>
 </div>
