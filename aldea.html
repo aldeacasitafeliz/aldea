@@ -609,6 +609,23 @@ tr:hover td { background: var(--gray-50); }
     flex-wrap: wrap !important;
   }
   .filter-row > * { min-width: 0; }
+
+  /* ---- WIZARD MOBILE ---- */
+  .desktop-only { display: none !important; }
+  .mobile-only { display: flex !important; }
+  .wizard-progress {
+    display: block !important;
+    height: 4px; background: var(--border-md); border-radius: 2px; margin-bottom: 16px; overflow: hidden;
+  }
+  .wizard-bar { height: 100%; background: var(--green-500,#22c55e); border-radius: 2px; transition: width 0.3s; }
+}
+
+/* Desktop: hide mobile-only, show all wizard steps */
+@media (min-width: 769px) {
+  .mobile-only { display: none !important; }
+  .desktop-only { display: flex !important; }
+  .wizard-step { display: block !important; }
+  .wizard-progress { display: none !important; }
 }
 </style>
 </head>
@@ -654,6 +671,9 @@ tr:hover td { background: var(--gray-50); }
     <div class="nav-item" onclick="showPage('dogs')">
       <span class="nav-icon">🐶</span> Perros
     </div>
+    <div class="nav-item" onclick="showPage('reservas')">
+      <span class="nav-icon">📌</span> Reservas
+    </div>
     <div class="nav-item" onclick="showPage('stays')">
       <span class="nav-icon">🏠</span> Hospedaje
     </div>
@@ -671,6 +691,9 @@ tr:hover td { background: var(--gray-50); }
     </div>
     <div class="nav-item" onclick="showPage('allergies')" id="nav-allergies">
       <span class="nav-icon">🚨</span> Alergias <span id="allergies-alert-dot" style="display:none;width:8px;height:8px;background:var(--red-400);border-radius:50%;margin-left:4px"></span>
+    </div>
+    <div class="nav-item" onclick="showPage('integrations')">
+      <span class="nav-icon">🤝</span> Integraciones
     </div>
     <div class="nav-item" onclick="showPage('incidents')">
       <span class="nav-icon">⚠️</span> Incidencias
@@ -813,11 +836,29 @@ tr:hover td { background: var(--gray-50); }
       </div>
     </div>
 
+    <!-- RESERVAS -->
+    <div id="page-reservas" class="page">
+      <div class="page-header">
+        <div class="page-title">📌 Reservas</div>
+        <button class="btn btn-primary" onclick="openReservaModal()">+ Agregar reserva</button>
+      </div>
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab-btn active" id="reservas-tab-btn-pendiente" onclick="switchReservasTab('pendiente',this)">Pendientes</button>
+        <button class="tab-btn" id="reservas-tab-btn-activa" onclick="switchReservasTab('activa',this)">Activadas</button>
+        <button class="tab-btn" id="reservas-tab-btn-caida" onclick="switchReservasTab('caida',this)">Caídas</button>
+      </div>
+      <div id="reservas-content"></div>
+    </div>
+
     <!-- HOSPEDAJE -->
     <div id="page-stays" class="page">
       <div class="page-header">
         <div class="page-title">Hospedaje</div>
         <button class="btn btn-primary" onclick="openStayModal()">+ Nueva estadía</button>
+      </div>
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab-btn active" id="stays-tab-btn-activos" onclick="switchStaysTab('activos',this)">Activos</button>
+        <button class="tab-btn" id="stays-tab-btn-historial" onclick="switchStaysTab('historial',this)">Historial</button>
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div id="stays-table-wrap"></div>
@@ -829,6 +870,10 @@ tr:hover td { background: var(--gray-50); }
       <div class="page-header">
         <div class="page-title">Daycare</div>
         <button class="btn btn-primary" onclick="openDaycareModal()">+ Registrar daycare</button>
+      </div>
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab-btn active" id="daycare-tab-btn-hoy" onclick="switchDaycareTab('hoy',this)">Hoy</button>
+        <button class="tab-btn" id="daycare-tab-btn-historial" onclick="switchDaycareTab('historial',this)">Historial</button>
       </div>
       <div class="card" style="padding:0;overflow:hidden">
         <div id="daycare-table-wrap"></div>
@@ -1132,6 +1177,20 @@ tr:hover td { background: var(--gray-50); }
       <div id="allergies-content"></div>
     </div>
 
+    <!-- INTEGRACIONES -->
+    <div id="page-integrations" class="page">
+      <div class="page-header">
+        <div class="page-title">🤝 Integraciones</div>
+        <button class="btn btn-primary" onclick="openIntegrationModal()">+ Programar integración</button>
+      </div>
+      <div class="tabs" style="margin-bottom:14px">
+        <button class="tab-btn active" id="integ-tab-btn-pendiente" onclick="switchIntegTab('pendiente',this)">Pendientes</button>
+        <button class="tab-btn" id="integ-tab-btn-aceptado" onclick="switchIntegTab('aceptado',this)">Aceptados</button>
+        <button class="tab-btn" id="integ-tab-btn-rechazado" onclick="switchIntegTab('rechazado',this)">Rechazados</button>
+      </div>
+      <div id="integrations-content"></div>
+    </div>
+
     <!-- EXPORTAR -->
     <div id="page-export" class="page">
       <div class="page-header">
@@ -1203,11 +1262,13 @@ tr:hover td { background: var(--gray-50); }
     <div class="bn-item" onclick="showPage('daily')" id="bn-daily"><span class="bn-icon">📋</span>Hoy</div>
     <div class="bn-item" onclick="showPage('calendar')" id="bn-calendar"><span class="bn-icon">📅</span>Calendario</div>
     <div class="bn-item" onclick="showPage('dogs')" id="bn-dogs"><span class="bn-icon">🐾</span>Perros</div>
+    <div class="bn-item" onclick="showPage('reservas')" id="bn-reservas"><span class="bn-icon">📌</span>Reservas</div>
     <div class="bn-item" onclick="showPage('stays')" id="bn-stays"><span class="bn-icon">🏡</span>Hospedaje</div>
     <div class="bn-item" onclick="showPage('daycare')" id="bn-daycare"><span class="bn-icon">☀️</span>Guardería</div>
     <div class="bn-item" onclick="showPage('salidas')" id="bn-salidas"><span class="bn-icon">🚪</span>Salidas</div>
     <div class="bn-item" onclick="showPage('meds')" id="bn-meds"><span class="bn-icon">💊</span>Meds<span id="bn-meds-dot" class="bn-dot" style="display:none"></span></div>
     <div class="bn-item" onclick="showPage('allergies')" id="bn-allergies"><span class="bn-icon">🚨</span>Alergias<span id="bn-allergies-dot" class="bn-dot" style="display:none"></span></div>
+    <div class="bn-item" onclick="showPage('integrations')" id="bn-integrations"><span class="bn-icon">🤝</span>Integraciones</div>
     <div class="bn-item" onclick="showPage('caretakers')" id="bn-caretakers"><span class="bn-icon">👩</span>Cuidadoras</div>
     <div class="bn-item" onclick="showPage('income')" id="bn-income"><span class="bn-icon">💰</span>Ingresos</div>
     <div class="bn-item" onclick="showPage('export')" id="bn-export"><span class="bn-icon">📤</span>Exportar</div>
@@ -2372,6 +2433,10 @@ const DB = {
   saveAssignments(d) { localStorage.setItem('aldea_assignments', JSON.stringify(d)); _sbSync('aldea_assignments', d); },
   saveFeedingShifts(d) { localStorage.setItem('aldea_feeding', JSON.stringify(d)); _sbSync('aldea_feeding', d); },
   savePhoneShifts(d) { localStorage.setItem('aldea_phone', JSON.stringify(d)); _sbSync('aldea_phone', d); },
+  get reservas() { return JSON.parse(localStorage.getItem('aldea_reservas') || '[]'); },
+  saveReservas(d) { localStorage.setItem('aldea_reservas', JSON.stringify(d)); _sbSync('aldea_reservas', d); },
+  get integrations() { return JSON.parse(localStorage.getItem('aldea_integrations') || '[]'); },
+  saveIntegrations(d) { localStorage.setItem('aldea_integrations', JSON.stringify(d)); _sbSync('aldea_integrations', d); },
   getDog(id) { return this.dogs.find(d => d.id === id); },
   nextId(arr) { return arr.length ? Math.max(...arr.map(x => x.id)) + 1 : 1; }
 };
@@ -2570,7 +2635,9 @@ const PAGE_TITLES = {
   meds: 'Medicamentos',
   restaurant: 'Aldea Restaurante',
   export: 'Exportar datos',
-  salidas: 'Salidas del día'
+  salidas: 'Salidas del día',
+  reservas: 'Reservas',
+  integrations: 'Integraciones'
 };
 
 // ---- Horizontal scroll: no JS needed, handled entirely by CSS touch-action ----
@@ -2616,6 +2683,8 @@ function showPage(id) {
   if (id === 'restaurant') renderRestaurantPage();
   if (id === 'salidas') renderSalidasPage();
   if (id === 'export') { setExportPeriod('month'); updateExportPreview(); renderExportHistory(); }
+  if (id === 'reservas') renderReservasPage();
+  if (id === 'integrations') renderIntegrationsPage();
   // Apply mobile card transformation after render
   requestAnimationFrame(() => { _applyMobileCards(); _fixDeleteBtns(); });
 }
@@ -4997,11 +5066,22 @@ function statusBadge(s) {
   return `<span class="badge ${map[s]||'badge-gray'}">${s}</span>`;
 }
 
+let _staysActiveTab = 'activos';
+function switchStaysTab(tab, btn) {
+  _staysActiveTab = tab;
+  document.querySelectorAll('#page-stays .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderStaysTable();
+}
 function renderStaysTable() {
-  const stays = DB.stays.sort((a,b) => b.check_in_date.localeCompare(a.check_in_date));
+  const allStays = DB.stays.sort((a,b) => b.check_in_date.localeCompare(a.check_in_date));
+  const d = today();
+  const stays = _staysActiveTab === 'activos'
+    ? allStays.filter(s => s.status !== 'cancelado' && (s.open_ended || !s.check_out_date || s.check_out_date >= d))
+    : allStays;
   const el = document.getElementById('stays-table-wrap');
   if (!stays.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏠</div><p>No hay estadías registradas.</p></div>';
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏠</div><p>${_staysActiveTab==='activos'?'No hay estadías activas actualmente.':'No hay estadías registradas.'}</p></div>`;
     return;
   }
   el.innerHTML = `<table>
@@ -5259,11 +5339,19 @@ function saveDaycare() {
 }
 
 
+let _daycareActiveTab = 'hoy';
+function switchDaycareTab(tab, btn) {
+  _daycareActiveTab = tab;
+  document.querySelectorAll('#page-daycare .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderDaycareTable();
+}
 function renderDaycareTable() {
-  const dcs = DB.daycares.sort((a,b) => b.date.localeCompare(a.date));
+  const allDcs = DB.daycares.sort((a,b) => b.date.localeCompare(a.date));
+  const dcs = _daycareActiveTab === 'hoy' ? allDcs.filter(x => x.date === today()) : allDcs;
   const el = document.getElementById('daycare-table-wrap');
   if (!dcs.length) {
-    el.innerHTML = '<div class="empty-state"><div class="empty-icon">☀️</div><p>No hay daycare registrado.</p></div>';
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">☀️</div><p>${_daycareActiveTab==='hoy'?'No hay daycare registrado para hoy.':'No hay daycare registrado.'}</p></div>`;
     return;
   }
   el.innerHTML = `<table>
@@ -7114,6 +7202,7 @@ function _saveEmailJSConfig() {
     alert('Completa todos los campos.'); return;
   }
   localStorage.setItem('aldea_emailjs', JSON.stringify(cfg));
+  _sbSync('aldea_emailjs', cfg);
   emailjs.init(cfg.public_key);
   closeModal('modal-emailjs-config');
   alert('✅ Configuración guardada.');
@@ -7896,8 +7985,9 @@ function renderCaretakersList() {
   const cts = DB.caretakers;
   const el = document.getElementById('ct-list-wrap');
   if (!cts.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">👩</div><p>No hay cuidadoras registradas.</p></div>'; return; }
+  const totalIntegs = Math.max(1, DB.integrations.filter(i => i.result !== 'pendiente').reduce((sum, i) => sum + (i.caretaker_ids||[]).length, 0));
   el.innerHTML = `<table>
-    <thead><tr><th>Nombre</th><th>Estado</th><th>Incorporación</th><th>Perros asignados</th><th>Carga total</th><th>Observaciones</th><th></th></tr></thead>
+    <thead><tr><th>Nombre</th><th>Estado</th><th>Incorporación</th><th>Perros asignados</th><th>Carga total</th><th>Integraciones</th><th>Observaciones</th><th></th></tr></thead>
     <tbody>${cts.map(c => {
       const onVac = isCaretakerOnVacation(c.id);
       const asgns = DB.assignments.filter(a => a.caretaker_id === c.id);
@@ -7908,12 +7998,19 @@ function renderCaretakersList() {
         : c.status === 'activa'
           ? '<span class="badge badge-green">Activa</span>'
           : '<span class="badge badge-gray">Inactiva</span>';
+      const integTotal = c.integ_total || 0;
+      const integAcc = c.integ_accepted || 0;
+      const integPct = integTotal > 0 ? ((integAcc / integTotal) * 100).toFixed(0) + '%' : '—';
+      const integCell = integTotal > 0
+        ? `${integTotal} (✅${integAcc} / ${integPct} acept.)`
+        : '<span class="text-muted">—</span>';
       return `<tr>
         <td><strong>${c.name}</strong></td>
         <td>${statusBadge}</td>
         <td class="text-muted text-sm">${fmtDate(c.joined_date)}</td>
         <td>${asgns.length}</td>
         <td class="text-sm">🏠 ${loadH} · ☀️ ${loadD}</td>
+        <td class="text-sm">${integCell}</td>
         <td class="text-muted text-sm">${c.notes||'—'}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-secondary btn-sm" onclick="openCaretakerModal(${c.id})">Editar</button>
@@ -9672,7 +9769,559 @@ function showConflictCaretakerWarning(alerts, onConfirm) {
   window._conflictConfirmFn = onConfirm;
   modal.classList.add('open');
 }
+
+// ===================== RESERVAS =====================
+let _reservasTab = 'pendiente';
+let _editingReservaId = null;
+let _reservaWizardStep = 1;
+
+function switchReservasTab(tab, btn) {
+  _reservasTab = tab;
+  document.querySelectorAll('#page-reservas .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderReservasPage();
+}
+
+function renderReservasPage() {
+  const el = document.getElementById('reservas-content');
+  const reservas = DB.reservas.filter(r => r.status === _reservasTab)
+    .sort((a,b) => (a.reserved_from||a.date||'').localeCompare(b.reserved_from||b.date||''));
+  if (!reservas.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📌</div><p>No hay reservas ${_reservasTab==='pendiente'?'pendientes':_reservasTab==='activa'?'activadas':'caídas'}.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<table><thead><tr>
+    <th>Tipo</th><th>Perro</th><th>Fecha</th><th>Salida</th><th>Tarifa</th><th>Estado</th><th></th>
+  </tr></thead><tbody>${reservas.map(r => {
+    const dog = DB.getDog(r.dog_id);
+    const dateLabel = r.type === 'hospedaje' ? fmtDate(r.reserved_from) : fmtDate(r.date);
+    const outLabel = r.type === 'hospedaje' ? (r.open_ended ? '<span class="badge badge-amber">Abierto</span>' : fmtDate(r.check_out_date)) : '—';
+    const rateLabel = r.type === 'hospedaje' ? `S/ ${r.rate}/${r.rate_type||'noche'}` : `S/ ${r.rate}`;
+    return `<tr>
+      <td><span class="chip" style="background:${r.type==='hospedaje'?'var(--green-100)':'var(--blue-100)'};color:${r.type==='hospedaje'?'var(--green-800)':'var(--blue-800)'}">${r.type==='hospedaje'?'🏠 Hospedaje':'☀️ Daycare'}</span></td>
+      <td><strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span></td>
+      <td>${dateLabel}</td>
+      <td>${outLabel}</td>
+      <td>${rateLabel}</td>
+      <td>${r.status==='pendiente'?'<span class="badge badge-amber">Pendiente</span>':r.status==='activa'?'<span class="badge badge-green">Activada</span>':'<span class="badge badge-gray">Caída</span>'}</td>
+      <td style="white-space:nowrap">
+        ${r.status==='pendiente'?`<button class="btn btn-primary btn-sm" onclick="activateReserva(${r.id})">Activar</button> <button class="btn btn-secondary btn-sm" onclick="dropReserva(${r.id})">Caída</button> `:''}
+        <button class="btn btn-secondary btn-sm" onclick="openReservaModal(${r.id})">Ver</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteReserva(${r.id})">✕</button>
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function getCapacidadActual() {
+  const d = today();
+  const hospedados = DB.stays.filter(s =>
+    s.status !== 'cancelado' && s.check_in_date <= d &&
+    (s.open_ended || !s.check_out_date || s.check_out_date >= d)
+  ).length;
+  const daycarehoy = DB.daycares.filter(dc => dc.date === d).length;
+  const resPendH = DB.reservas.filter(r => r.type === 'hospedaje' && r.status === 'pendiente').length;
+  const resPendD = DB.reservas.filter(r => r.type === 'daycare' && r.status === 'pendiente').length;
+  return hospedados + daycarehoy + resPendH + resPendD;
+}
+
+function openReservaModal(id) {
+  _editingReservaId = id || null;
+  const r = id ? DB.reservas.find(x => x.id === id) : null;
+  document.getElementById('res-alerts').innerHTML = '';
+  // populate dogs
+  const dogs = DB.dogs;
+  const dogOpts = dogs.map(d => `<option value="${d.id}">${d.name} ${d.owner_last_name||''}</option>`).join('');
+  document.getElementById('res-dog').innerHTML = '<option value="">Seleccionar perro…</option>' + dogOpts;
+  // type tabs
+  const tipo = r?.type || 'hospedaje';
+  document.getElementById('res-type-hosp').classList.toggle('active', tipo === 'hospedaje');
+  document.getElementById('res-type-dc').classList.toggle('active', tipo === 'daycare');
+  document.getElementById('res-hosp-fields').style.display = tipo === 'hospedaje' ? '' : 'none';
+  document.getElementById('res-dc-fields').style.display = tipo === 'daycare' ? '' : 'none';
+  if (r) {
+    document.getElementById('res-dog').value = r.dog_id;
+    document.getElementById('res-notes').value = r.notes || '';
+    if (r.type === 'hospedaje') {
+      document.getElementById('res-checkin').value = r.reserved_from || '';
+      document.getElementById('res-checkout').value = r.check_out_date || '';
+      document.getElementById('res-rate-h').value = r.rate || '';
+      document.getElementById('res-rate-type').value = r.rate_type || 'noche';
+      document.getElementById('res-open-ended').checked = !!r.open_ended;
+    } else {
+      document.getElementById('res-date').value = r.date || '';
+      document.getElementById('res-rate-d').value = r.rate || '';
+    }
+  } else {
+    document.getElementById('res-dog').value = '';
+    document.getElementById('res-checkin').value = today();
+    document.getElementById('res-checkout').value = '';
+    document.getElementById('res-rate-h').value = '';
+    document.getElementById('res-rate-type').value = 'noche';
+    document.getElementById('res-open-ended').checked = false;
+    document.getElementById('res-date').value = today();
+    document.getElementById('res-rate-d').value = '';
+    document.getElementById('res-notes').value = '';
+  }
+  document.getElementById('res-modal-title').textContent = id ? 'Ver / editar reserva' : 'Nueva reserva';
+  openModal('modal-reserva');
+  _reservaWizardStep = 1;
+  _renderReservaWizard();
+}
+
+function _setReservaType(type) {
+  document.getElementById('res-type-hosp').classList.toggle('active', type === 'hospedaje');
+  document.getElementById('res-type-dc').classList.toggle('active', type === 'daycare');
+  document.getElementById('res-hosp-fields').style.display = type === 'hospedaje' ? '' : 'none';
+  document.getElementById('res-dc-fields').style.display = type === 'daycare' ? '' : 'none';
+}
+
+function _renderReservaWizard() {
+  if (window.innerWidth > 768) return;
+  const steps = document.querySelectorAll('#modal-reserva .wizard-step');
+  steps.forEach((s, i) => s.style.display = (i + 1 === _reservaWizardStep) ? '' : 'none');
+  const total = steps.length;
+  document.getElementById('res-wizard-back').style.display = _reservaWizardStep > 1 ? '' : 'none';
+  document.getElementById('res-wizard-next').style.display = _reservaWizardStep < total ? '' : 'none';
+  document.getElementById('res-wizard-save').style.display = _reservaWizardStep === total ? '' : 'none';
+  const bar = document.getElementById('res-wizard-bar');
+  if (bar) bar.style.width = ((_reservaWizardStep / total) * 100) + '%';
+}
+
+function saveReserva() {
+  const alerts = document.getElementById('res-alerts');
+  alerts.innerHTML = '';
+  const dogId = parseInt(document.getElementById('res-dog').value);
+  if (!dogId) { alerts.innerHTML = '<div class="alert alert-danger">Seleccioná un perro.</div>'; return; }
+  const isHosp = document.getElementById('res-type-hosp').classList.contains('active');
+  const cap = getCapacidadActual();
+  if (!_editingReservaId && cap >= 20) {
+    alerts.innerHTML = '<div class="alert alert-danger">Capacidad máxima alcanzada (20). No se puede agregar más reservas.</div>';
+    return;
+  }
+  let obj = { dog_id: dogId, notes: document.getElementById('res-notes').value, status: _editingReservaId ? (DB.reservas.find(x=>x.id===_editingReservaId)?.status || 'pendiente') : 'pendiente' };
+  if (isHosp) {
+    const cin = document.getElementById('res-checkin').value;
+    const cout = document.getElementById('res-checkout').value;
+    const rate = parseFloat(document.getElementById('res-rate-h').value);
+    const open = document.getElementById('res-open-ended').checked;
+    if (!cin || (!cout && !open)) { alerts.innerHTML = '<div class="alert alert-danger">Completá fechas de ingreso y salida (o marcá sin fecha de salida).</div>'; return; }
+    if (!rate) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la tarifa.</div>'; return; }
+    obj = { ...obj, type: 'hospedaje', reserved_from: cin, check_out_date: open ? null : cout, open_ended: open, rate, rate_type: document.getElementById('res-rate-type').value };
+  } else {
+    const date = document.getElementById('res-date').value;
+    const rate = parseFloat(document.getElementById('res-rate-d').value);
+    if (!date || !rate) { alerts.innerHTML = '<div class="alert alert-danger">Completá fecha y tarifa.</div>'; return; }
+    obj = { ...obj, type: 'daycare', date, rate };
+  }
+  const arr = DB.reservas;
+  if (_editingReservaId) {
+    const idx = arr.findIndex(x => x.id === _editingReservaId);
+    arr[idx] = { ...arr[idx], ...obj };
+  } else {
+    obj.id = DB.nextId(arr);
+    obj.created_at = new Date().toISOString();
+    arr.push(obj);
+  }
+  DB.saveReservas(arr);
+  closeModal('modal-reserva');
+  renderReservasPage();
+}
+
+function activateReserva(id) {
+  const r = DB.reservas.find(x => x.id === id);
+  if (!r) return;
+  // Create the actual stay or daycare
+  if (r.type === 'hospedaje') {
+    const stays = DB.stays;
+    const newStay = {
+      id: DB.nextId(stays), dog_id: r.dog_id, check_in_date: r.reserved_from,
+      check_out_date: r.check_out_date, open_ended: r.open_ended, rate: r.rate,
+      rate_type: r.rate_type, service_type: 'hospedaje', status: 'activo',
+      notes: r.notes, is_exchange: false, late_pickup: false
+    };
+    stays.push(newStay);
+    DB.saveStays(stays);
+  } else {
+    const dcs = DB.daycares;
+    dcs.push({ id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate, notes: r.notes, advance_paid: false });
+    DB.saveDaycares(dcs);
+  }
+  const arr = DB.reservas;
+  arr.find(x => x.id === id).status = 'activa';
+  arr.find(x => x.id === id).activated_at = new Date().toISOString();
+  DB.saveReservas(arr);
+  renderReservasPage();
+  if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
+  alert('✅ Reserva activada. ' + (r.type === 'hospedaje' ? 'La estadía fue creada en Hospedaje.' : 'El registro fue creado en Daycare.'));
+}
+
+function dropReserva(id) {
+  if (!confirm('¿Marcar esta reserva como caída?')) return;
+  const arr = DB.reservas;
+  const r = arr.find(x => x.id === id);
+  r.status = 'caida';
+  r.fallen_at = new Date().toISOString();
+  DB.saveReservas(arr);
+  renderReservasPage();
+}
+
+function deleteReserva(id) {
+  if (!confirm('¿Eliminar esta reserva definitivamente?')) return;
+  DB.saveReservas(DB.reservas.filter(x => x.id !== id));
+  renderReservasPage();
+}
+
+// ===================== INTEGRACIONES =====================
+let _integTab = 'pendiente';
+let _editingIntegId = null;
+let _integWizardStep = 1;
+
+function switchIntegTab(tab, btn) {
+  _integTab = tab;
+  document.querySelectorAll('#page-integrations .tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderIntegrationsPage();
+}
+
+function renderIntegrationsPage() {
+  const el = document.getElementById('integrations-content');
+  const list = DB.integrations.filter(i => i.result === _integTab)
+    .sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  if (!list.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🤝</div><p>No hay integraciones ${_integTab==='pendiente'?'pendientes':_integTab==='aceptado'?'aceptadas':'rechazadas'}.</p></div>`;
+    return;
+  }
+  el.innerHTML = `<table><thead><tr>
+    <th>Perro</th><th>Contacto</th><th>Fecha</th><th>Hora</th><th>Cuidadora(s)</th><th>Resultado</th><th></th>
+  </tr></thead><tbody>${list.map(i => {
+    const ctNames = (i.caretaker_ids||[]).map(cid => DB.caretakers.find(c=>c.id===cid)?.name||'?').join(', ') || '—';
+    const resBadge = i.result === 'pendiente' ? '<span class="badge badge-amber">Pendiente</span>'
+      : i.result === 'aceptado' ? '<span class="badge badge-green">Aceptado</span>'
+      : '<span class="badge badge-red">Rechazado</span>';
+    return `<tr>
+      <td><strong>${i.dog_name}</strong></td>
+      <td>${i.contact_name||'—'} ${i.phone?`<span class="text-muted text-sm">${i.phone}</span>`:''}</td>
+      <td>${fmtDate(i.date)}</td>
+      <td>${i.time||'—'}</td>
+      <td class="text-sm">${ctNames}</td>
+      <td>${resBadge}${i.rejection_reason?`<br><span class="text-muted text-sm">${i.rejection_reason}</span>`:''}</td>
+      <td style="white-space:nowrap">
+        ${i.result==='pendiente'?`<button class="btn btn-primary btn-sm" onclick="openIntegResultModal(${i.id})">Resultado</button> `:''}
+        ${i.result==='aceptado'?`<button class="btn btn-secondary btn-sm" onclick="prefillDogFromInteg(${i.id})">→ Perro</button> `:''}
+        <button class="btn btn-secondary btn-sm" onclick="openIntegrationModal(${i.id})">Ver</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteIntegration(${i.id})">✕</button>
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function openIntegrationModal(id) {
+  _editingIntegId = id || null;
+  const i = id ? DB.integrations.find(x => x.id === id) : null;
+  document.getElementById('integ-alerts').innerHTML = '';
+  document.getElementById('integ-modal-title').textContent = id ? 'Ver integración' : 'Programar integración';
+  document.getElementById('integ-dog-name').value = i?.dog_name || '';
+  document.getElementById('integ-contact').value = i?.contact_name || '';
+  document.getElementById('integ-phone').value = i?.phone || '';
+  document.getElementById('integ-date').value = i?.date || today();
+  document.getElementById('integ-time').value = i?.time || '';
+  document.getElementById('integ-notes').value = i?.notes || '';
+  // populate caretakers
+  const cts = DB.caretakers.filter(c => c.status === 'activa');
+  document.getElementById('integ-caretakers').innerHTML = cts.map(c =>
+    `<label style="display:flex;align-items:center;gap:6px;padding:4px 0;cursor:pointer">
+      <input type="checkbox" value="${c.id}" ${(i?.caretaker_ids||[]).includes(c.id)?'checked':''}> ${c.name}
+    </label>`
+  ).join('');
+  openModal('modal-integration');
+  _integWizardStep = 1;
+  _renderIntegWizard();
+}
+
+function _renderIntegWizard() {
+  if (window.innerWidth > 768) return;
+  const steps = document.querySelectorAll('#modal-integration .wizard-step');
+  steps.forEach((s, i) => s.style.display = (i + 1 === _integWizardStep) ? '' : 'none');
+  const total = steps.length;
+  document.getElementById('integ-wizard-back').style.display = _integWizardStep > 1 ? '' : 'none';
+  document.getElementById('integ-wizard-next').style.display = _integWizardStep < total ? '' : 'none';
+  document.getElementById('integ-wizard-save').style.display = _integWizardStep === total ? '' : 'none';
+  const bar = document.getElementById('integ-wizard-bar');
+  if (bar) bar.style.width = ((_integWizardStep / total) * 100) + '%';
+}
+
+function saveIntegration() {
+  const alerts = document.getElementById('integ-alerts');
+  alerts.innerHTML = '';
+  const dogName = document.getElementById('integ-dog-name').value.trim();
+  const date = document.getElementById('integ-date').value;
+  if (!dogName || !date) { alerts.innerHTML = '<div class="alert alert-danger">Nombre del perro y fecha son obligatorios.</div>'; return; }
+  const ctIds = Array.from(document.querySelectorAll('#integ-caretakers input[type=checkbox]:checked')).map(c => parseInt(c.value));
+  const obj = {
+    dog_name: dogName,
+    contact_name: document.getElementById('integ-contact').value.trim(),
+    phone: document.getElementById('integ-phone').value.trim(),
+    date, time: document.getElementById('integ-time').value,
+    caretaker_ids: ctIds,
+    notes: document.getElementById('integ-notes').value.trim(),
+    result: _editingIntegId ? (DB.integrations.find(x=>x.id===_editingIntegId)?.result || 'pendiente') : 'pendiente'
+  };
+  const arr = DB.integrations;
+  if (_editingIntegId) {
+    const idx = arr.findIndex(x => x.id === _editingIntegId);
+    arr[idx] = { ...arr[idx], ...obj };
+  } else {
+    obj.id = DB.nextId(arr);
+    obj.created_at = new Date().toISOString();
+    arr.push(obj);
+  }
+  DB.saveIntegrations(arr);
+  closeModal('modal-integration');
+  renderIntegrationsPage();
+}
+
+function openIntegResultModal(id) {
+  document.getElementById('integ-result-id').value = id;
+  document.getElementById('integ-result-reason').value = '';
+  document.querySelector('input[name="integ-result"][value="aceptado"]').checked = true;
+  document.getElementById('integ-result-reason-wrap').style.display = 'none';
+  openModal('modal-integ-result');
+}
+
+function saveIntegResult() {
+  const id = parseInt(document.getElementById('integ-result-id').value);
+  const result = document.querySelector('input[name="integ-result"]:checked').value;
+  const reason = document.getElementById('integ-result-reason').value.trim();
+  const arr = DB.integrations;
+  const integ = arr.find(x => x.id === id);
+  if (!integ) return;
+  integ.result = result;
+  integ.rejection_reason = result === 'rechazado' ? reason : '';
+  integ.resolved_at = new Date().toISOString();
+  DB.saveIntegrations(arr);
+  // Update caretaker metrics
+  (integ.caretaker_ids||[]).forEach(cid => {
+    const cts = DB.caretakers;
+    const ct = cts.find(c => c.id === cid);
+    if (!ct) return;
+    ct.integ_total = (ct.integ_total || 0) + 1;
+    if (result === 'aceptado') ct.integ_accepted = (ct.integ_accepted || 0) + 1;
+    DB.saveCaretakers(cts);
+  });
+  closeModal('modal-integ-result');
+  // Switch to corresponding tab
+  _integTab = result;
+  document.querySelectorAll('#page-integrations .tab-btn').forEach(b => b.classList.remove('active'));
+  const tabBtn = document.getElementById(`integ-tab-btn-${result}`);
+  if (tabBtn) tabBtn.classList.add('active');
+  renderIntegrationsPage();
+  renderCaretakersList();
+}
+
+function prefillDogFromInteg(id) {
+  const integ = DB.integrations.find(x => x.id === id);
+  if (!integ) return;
+  openNewDog();
+  // Pre-fill name from dog_name (first word as name, rest could be ignored or split)
+  const parts = integ.dog_name.trim().split(' ');
+  const nameInput = document.getElementById('dog-name');
+  if (nameInput) nameInput.value = parts[0] || integ.dog_name;
+  // Pre-fill owner info from contact
+  const ownerInput = document.getElementById('dog-owner-name');
+  if (ownerInput && integ.contact_name) ownerInput.value = integ.contact_name;
+  const phoneInput = document.getElementById('dog-owner-phone');
+  if (phoneInput && integ.phone) phoneInput.value = integ.phone;
+  alert('✅ Formulario de perro pre-llenado con los datos de la integración.');
+}
+
+function deleteIntegration(id) {
+  if (!confirm('¿Eliminar esta integración?')) return;
+  DB.saveIntegrations(DB.integrations.filter(x => x.id !== id));
+  renderIntegrationsPage();
+}
 </script>
+
+<!-- Modal reserva -->
+<div class="modal-overlay" id="modal-reserva">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-title" id="res-modal-title">Nueva reserva</div>
+    <div id="res-alerts"></div>
+    <!-- Mobile wizard progress bar -->
+    <div class="wizard-progress" style="display:none"><div class="wizard-bar" id="res-wizard-bar"></div></div>
+    <!-- Paso 1: Tipo -->
+    <div class="wizard-step">
+      <div class="form-group">
+        <label>Tipo de servicio *</label>
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn btn-secondary active" id="res-type-hosp" onclick="_setReservaType('hospedaje')">🏠 Hospedaje</button>
+          <button type="button" class="btn btn-secondary" id="res-type-dc" onclick="_setReservaType('daycare')">☀️ Daycare</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Perro *</label>
+        <select id="res-dog" class="form-control"></select>
+      </div>
+    </div>
+    <!-- Paso 2: Fechas / Tarifa hospedaje -->
+    <div class="wizard-step">
+      <div id="res-hosp-fields">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha de ingreso *</label>
+            <input type="date" id="res-checkin" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Fecha de salida</label>
+            <input type="date" id="res-checkout" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Tarifa *</label>
+            <input type="number" id="res-rate-h" class="form-control" placeholder="S/ por noche" min="0">
+          </div>
+          <div class="form-group">
+            <label>Tipo de tarifa</label>
+            <select id="res-rate-type" class="form-control">
+              <option value="noche">Por noche</option>
+              <option value="dia">Por día</option>
+              <option value="fijo">Monto fijo</option>
+            </select>
+          </div>
+          <div class="form-group span2">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="checkbox" id="res-open-ended"> Sin fecha de salida (estadía indefinida)
+            </label>
+          </div>
+        </div>
+      </div>
+      <div id="res-dc-fields" style="display:none">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Fecha *</label>
+            <input type="date" id="res-date" class="form-control">
+          </div>
+          <div class="form-group">
+            <label>Tarifa *</label>
+            <input type="number" id="res-rate-d" class="form-control" placeholder="S/ daycare" min="0">
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Paso 3: Notas -->
+    <div class="wizard-step">
+      <div class="form-group">
+        <label>Observaciones</label>
+        <textarea id="res-notes" class="form-control" rows="3" placeholder="Notas adicionales…"></textarea>
+      </div>
+    </div>
+    <!-- Footer desktop -->
+    <div class="modal-footer desktop-only">
+      <button class="btn btn-secondary" onclick="closeModal('modal-reserva')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveReserva()">Guardar reserva</button>
+    </div>
+    <!-- Footer mobile wizard -->
+    <div class="modal-footer mobile-only" style="justify-content:space-between">
+      <button class="btn btn-secondary" id="res-wizard-back" style="display:none" onclick="_reservaWizardStep--;_renderReservaWizard()">← Atrás</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-reserva')">Cancelar</button>
+      <button class="btn btn-primary" id="res-wizard-next" onclick="_reservaWizardStep++;_renderReservaWizard()">Siguiente →</button>
+      <button class="btn btn-primary" id="res-wizard-save" style="display:none" onclick="saveReserva()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal integración -->
+<div class="modal-overlay" id="modal-integration">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-title" id="integ-modal-title">Programar integración</div>
+    <div id="integ-alerts"></div>
+    <div class="wizard-progress" style="display:none"><div class="wizard-bar" id="integ-wizard-bar"></div></div>
+    <!-- Paso 1: Perro y contacto -->
+    <div class="wizard-step">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Nombre del perro *</label>
+          <input type="text" id="integ-dog-name" class="form-control" placeholder="Nombre del perro">
+        </div>
+        <div class="form-group">
+          <label>Nombre del contacto</label>
+          <input type="text" id="integ-contact" class="form-control" placeholder="Dueño / contacto">
+        </div>
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input type="text" id="integ-phone" class="form-control" placeholder="Número de celular">
+        </div>
+      </div>
+    </div>
+    <!-- Paso 2: Fecha y hora -->
+    <div class="wizard-step">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Fecha *</label>
+          <input type="date" id="integ-date" class="form-control">
+        </div>
+        <div class="form-group">
+          <label>Hora</label>
+          <input type="time" id="integ-time" class="form-control">
+        </div>
+      </div>
+    </div>
+    <!-- Paso 3: Cuidadoras -->
+    <div class="wizard-step">
+      <div class="form-group">
+        <label>Cuidadora(s) asignadas</label>
+        <div id="integ-caretakers" style="max-height:180px;overflow-y:auto;padding:4px"></div>
+      </div>
+    </div>
+    <!-- Paso 4: Notas -->
+    <div class="wizard-step">
+      <div class="form-group">
+        <label>Observaciones</label>
+        <textarea id="integ-notes" class="form-control" rows="3" placeholder="Notas sobre la integración…"></textarea>
+      </div>
+    </div>
+    <!-- Footer desktop -->
+    <div class="modal-footer desktop-only">
+      <button class="btn btn-secondary" onclick="closeModal('modal-integration')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveIntegration()">Guardar</button>
+    </div>
+    <!-- Footer mobile wizard -->
+    <div class="modal-footer mobile-only" style="justify-content:space-between">
+      <button class="btn btn-secondary" id="integ-wizard-back" style="display:none" onclick="_integWizardStep--;_renderIntegWizard()">← Atrás</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-integration')">Cancelar</button>
+      <button class="btn btn-primary" id="integ-wizard-next" onclick="_integWizardStep++;_renderIntegWizard()">Siguiente →</button>
+      <button class="btn btn-primary" id="integ-wizard-save" style="display:none" onclick="saveIntegration()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal resultado integración -->
+<div class="modal-overlay" id="modal-integ-result">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">Resultado de la integración</div>
+    <input type="hidden" id="integ-result-id">
+    <div class="form-group">
+      <label>Resultado *</label>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="radio" name="integ-result" value="aceptado" onchange="document.getElementById('integ-result-reason-wrap').style.display='none'"> ✅ Aceptado — el perro puede ingresar
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="radio" name="integ-result" value="rechazado" onchange="document.getElementById('integ-result-reason-wrap').style.display=''"> ❌ Rechazado
+        </label>
+      </div>
+    </div>
+    <div id="integ-result-reason-wrap" style="display:none">
+      <div class="form-group">
+        <label>Motivo de rechazo</label>
+        <textarea id="integ-result-reason" class="form-control" rows="2" placeholder="Razón por la que no fue aceptado…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-integ-result')">Cancelar</button>
+      <button class="btn btn-primary" onclick="saveIntegResult()">Guardar resultado</button>
+    </div>
+  </div>
+</div>
 
 <!-- Modal restaurante -->
 <div class="modal-overlay" id="modal-restaurant">
