@@ -9847,57 +9847,148 @@ function openReservaModal(id) {
   _editingReservaId = id || null;
   const r = id ? DB.reservas.find(x => x.id === id) : null;
   document.getElementById('res-alerts').innerHTML = '';
-  // populate dogs
-  const dogs = DB.dogs;
-  const dogOpts = dogs.map(d => `<option value="${d.id}">${d.name} ${d.owner_last_name||''}</option>`).join('');
-  document.getElementById('res-dog').innerHTML = '<option value="">Seleccionar perro…</option>' + dogOpts;
-  // type tabs
   const tipo = r?.type || 'hospedaje';
-  document.getElementById('res-type-hosp').classList.toggle('active', tipo === 'hospedaje');
-  document.getElementById('res-type-dc').classList.toggle('active', tipo === 'daycare');
-  document.getElementById('res-hosp-fields').style.display = tipo === 'hospedaje' ? '' : 'none';
-  document.getElementById('res-dc-fields').style.display = tipo === 'daycare' ? '' : 'none';
+  _setReservaType(tipo);
+  // Reset all fields
+  document.getElementById('res-dog-input').value = '';
+  document.getElementById('res-dog').value = '';
+  document.getElementById('res-dog-dropdown').style.display = 'none';
+  document.getElementById('res-dc-dog-input').value = '';
+  document.getElementById('res-dc-dog').value = '';
+  document.getElementById('res-dc-dog-dropdown').style.display = 'none';
+  document.getElementById('res-checkin').value = today();
+  document.getElementById('res-checkout').value = '';
+  document.getElementById('res-rate-h').value = '';
+  document.getElementById('res-rate-type').value = 'nightly';
+  document.getElementById('res-exchange').value = 'no';
+  document.getElementById('res-notes').value = '';
+  document.getElementById('res-date').value = today();
+  document.getElementById('res-rate-d').value = '';
+  document.getElementById('res-dc-notes').value = '';
+  document.querySelectorAll('input[name="res-open-ended"]')[0].checked = true;
+  document.getElementById('res-checkout').style.display = '';
+  document.querySelectorAll('input[name="res-advance"]')[0].checked = true;
+  document.getElementById('res-advance-section').style.display = 'none';
+  document.getElementById('res-advance-amount') && (document.getElementById('res-advance-amount').value = '');
+  document.querySelectorAll('input[name="res-discount"]')[0].checked = true;
+  document.getElementById('res-discount-section').style.display = 'none';
+  document.getElementById('res-discount-pct') && (document.getElementById('res-discount-pct').value = '');
   if (r) {
-    document.getElementById('res-dog').value = r.dog_id;
-    document.getElementById('res-notes').value = r.notes || '';
+    const dog = DB.getDog(r.dog_id);
+    const dogLabel = dog ? dog.name + ' ' + (dog.owner_last_name||'') : '';
     if (r.type === 'hospedaje') {
+      document.getElementById('res-dog-input').value = dogLabel;
+      document.getElementById('res-dog').value = r.dog_id || '';
       document.getElementById('res-checkin').value = r.reserved_from || '';
       document.getElementById('res-checkout').value = r.check_out_date || '';
       document.getElementById('res-rate-h').value = r.rate || '';
-      document.getElementById('res-rate-type').value = r.rate_type || 'noche';
-      document.getElementById('res-open-ended').checked = !!r.open_ended;
+      document.getElementById('res-rate-type').value = r.rate_type || 'nightly';
+      document.getElementById('res-exchange').value = r.is_exchange ? 'si' : 'no';
+      document.getElementById('res-notes').value = r.notes || '';
+      if (r.open_ended) document.querySelectorAll('input[name="res-open-ended"]')[1].checked = true;
+      if (r.advance_amount) {
+        document.querySelectorAll('input[name="res-advance"]')[1].checked = true;
+        document.getElementById('res-advance-section').style.display = '';
+        document.getElementById('res-advance-amount').value = r.advance_amount;
+      }
+      if (r.discount_pct) {
+        document.querySelectorAll('input[name="res-discount"]')[1].checked = true;
+        document.getElementById('res-discount-section').style.display = '';
+        document.getElementById('res-discount-pct').value = r.discount_pct;
+      }
     } else {
+      document.getElementById('res-dc-dog-input').value = dogLabel;
+      document.getElementById('res-dc-dog').value = r.dog_id || '';
       document.getElementById('res-date').value = r.date || '';
       document.getElementById('res-rate-d').value = r.rate || '';
+      document.getElementById('res-dc-notes').value = r.notes || '';
     }
-  } else {
-    document.getElementById('res-dog').value = '';
-    document.getElementById('res-checkin').value = today();
-    document.getElementById('res-checkout').value = '';
-    document.getElementById('res-rate-h').value = '';
-    document.getElementById('res-rate-type').value = 'noche';
-    document.getElementById('res-open-ended').checked = false;
-    document.getElementById('res-date').value = today();
-    document.getElementById('res-rate-d').value = '';
-    document.getElementById('res-notes').value = '';
   }
   document.getElementById('res-modal-title').textContent = id ? 'Ver / editar reserva' : 'Nueva reserva';
   openModal('modal-reserva');
-  _reservaWizardStep = 1;
-  _renderReservaWizard();
 }
 
 function _setReservaType(type) {
   const btnH = document.getElementById('res-type-hosp');
   const btnD = document.getElementById('res-type-dc');
-  btnH.classList.toggle('active', type === 'hospedaje');
-  btnD.classList.toggle('active', type === 'daycare');
   const activeStyle = 'background:var(--green-600,#16a34a);color:#fff;border-color:var(--green-600,#16a34a);font-weight:600';
-  const inactiveStyle = '';
-  btnH.style.cssText = type === 'hospedaje' ? activeStyle : inactiveStyle;
-  btnD.style.cssText = type === 'daycare' ? activeStyle : inactiveStyle;
+  btnH.style.cssText = type === 'hospedaje' ? activeStyle : '';
+  btnD.style.cssText = type === 'daycare' ? activeStyle : '';
   document.getElementById('res-hosp-fields').style.display = type === 'hospedaje' ? '' : 'none';
   document.getElementById('res-dc-fields').style.display = type === 'daycare' ? '' : 'none';
+}
+
+function toggleResOpenEnded() {
+  const open = document.querySelector('input[name="res-open-ended"]:checked').value === 'si';
+  document.getElementById('res-checkout').style.display = open ? 'none' : '';
+}
+function toggleResAdvance() {
+  document.getElementById('res-advance-section').style.display =
+    document.querySelector('input[name="res-advance"]:checked').value === 'si' ? '' : 'none';
+}
+function toggleResDiscount() {
+  document.getElementById('res-discount-section').style.display =
+    document.querySelector('input[name="res-discount"]:checked').value === 'si' ? '' : 'none';
+}
+
+// Dog autocomplete for reserva hospedaje
+let _resDogActive = -1;
+function filterResDogSuggestions() {
+  const q = document.getElementById('res-dog-input').value.toLowerCase().trim();
+  const dogs = DB.dogs.slice().sort((a,b) => a.name.localeCompare(b.name));
+  const filtered = q ? dogs.filter(d => d.name.toLowerCase().includes(q) || (d.owner_last_name||'').toLowerCase().includes(q)) : dogs;
+  const dd = document.getElementById('res-dog-dropdown');
+  _resDogActive = -1;
+  if (!filtered.length) { dd.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-muted)">Sin resultados</div>'; dd.style.display='block'; return; }
+  dd.innerHTML = filtered.map((d,i) => `<div style="padding:9px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--border);font-size:13px"
+    onmousedown="selectResDog(${d.id},'${d.name} ${d.owner_last_name||''}')" onmouseover="this.style.background='var(--green-50)'" onmouseout="this.style.background=''">
+    <span><strong>${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name||''}</span></span>
+    <span style="font-size:11px;color:var(--text-faint)">${d.size||''}</span>
+  </div>`).join('');
+  dd.style.display = 'block';
+}
+function selectResDog(id, label) {
+  document.getElementById('res-dog').value = id;
+  document.getElementById('res-dog-input').value = label;
+  document.getElementById('res-dog-dropdown').style.display = 'none';
+}
+function hideResDogSuggestions() { setTimeout(() => { document.getElementById('res-dog-dropdown').style.display='none'; }, 150); }
+function resDogInputKeydown(e) {
+  const items = document.querySelectorAll('#res-dog-dropdown > div');
+  if (e.key==='ArrowDown') { e.preventDefault(); _resDogActive=Math.min(_resDogActive+1,items.length-1); items.forEach((el,i)=>el.style.background=i===_resDogActive?'var(--green-50)':''); }
+  else if (e.key==='ArrowUp') { e.preventDefault(); _resDogActive=Math.max(_resDogActive-1,0); items.forEach((el,i)=>el.style.background=i===_resDogActive?'var(--green-50)':''); }
+  else if (e.key==='Enter'&&_resDogActive>=0) { e.preventDefault(); items[_resDogActive]?.dispatchEvent(new MouseEvent('mousedown')); }
+  else if (e.key==='Escape') { document.getElementById('res-dog-dropdown').style.display='none'; }
+}
+
+// Dog autocomplete for reserva daycare
+let _resDcDogActive = -1;
+function filterResDcDogSuggestions() {
+  const q = document.getElementById('res-dc-dog-input').value.toLowerCase().trim();
+  const dogs = DB.dogs.slice().sort((a,b) => a.name.localeCompare(b.name));
+  const filtered = q ? dogs.filter(d => d.name.toLowerCase().includes(q) || (d.owner_last_name||'').toLowerCase().includes(q)) : dogs;
+  const dd = document.getElementById('res-dc-dog-dropdown');
+  _resDcDogActive = -1;
+  if (!filtered.length) { dd.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-muted)">Sin resultados</div>'; dd.style.display='block'; return; }
+  dd.innerHTML = filtered.map((d,i) => `<div style="padding:9px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--border);font-size:13px"
+    onmousedown="selectResDcDog(${d.id},'${d.name} ${d.owner_last_name||''}')" onmouseover="this.style.background='var(--green-50)'" onmouseout="this.style.background=''">
+    <span><strong>${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name||''}</span></span>
+    <span style="font-size:11px;color:var(--text-faint)">${d.size||''}</span>
+  </div>`).join('');
+  dd.style.display = 'block';
+}
+function selectResDcDog(id, label) {
+  document.getElementById('res-dc-dog').value = id;
+  document.getElementById('res-dc-dog-input').value = label;
+  document.getElementById('res-dc-dog-dropdown').style.display = 'none';
+}
+function hideResDcDogSuggestions() { setTimeout(() => { document.getElementById('res-dc-dog-dropdown').style.display='none'; }, 150); }
+function resDcDogInputKeydown(e) {
+  const items = document.querySelectorAll('#res-dc-dog-dropdown > div');
+  if (e.key==='ArrowDown') { e.preventDefault(); _resDcDogActive=Math.min(_resDcDogActive+1,items.length-1); items.forEach((el,i)=>el.style.background=i===_resDcDogActive?'var(--green-50)':''); }
+  else if (e.key==='ArrowUp') { e.preventDefault(); _resDcDogActive=Math.max(_resDcDogActive-1,0); items.forEach((el,i)=>el.style.background=i===_resDcDogActive?'var(--green-50)':''); }
+  else if (e.key==='Enter'&&_resDcDogActive>=0) { e.preventDefault(); items[_resDcDogActive]?.dispatchEvent(new MouseEvent('mousedown')); }
+  else if (e.key==='Escape') { document.getElementById('res-dc-dog-dropdown').style.display='none'; }
 }
 
 function _renderReservaWizard() {
@@ -9915,28 +10006,41 @@ function _renderReservaWizard() {
 function saveReserva() {
   const alerts = document.getElementById('res-alerts');
   alerts.innerHTML = '';
-  const dogId = parseInt(document.getElementById('res-dog').value);
+  const isHosp = document.getElementById('res-hosp-fields').style.display !== 'none';
+  const dogId = isHosp
+    ? parseInt(document.getElementById('res-dog').value)
+    : parseInt(document.getElementById('res-dc-dog').value);
   if (!dogId) { alerts.innerHTML = '<div class="alert alert-danger">Seleccioná un perro.</div>'; return; }
-  const isHosp = document.getElementById('res-type-hosp').classList.contains('active');
   const cap = getCapacidadActual();
   if (!_editingReservaId && cap >= 20) {
     alerts.innerHTML = '<div class="alert alert-danger">Capacidad máxima alcanzada (20). No se puede agregar más reservas.</div>';
     return;
   }
-  let obj = { dog_id: dogId, notes: document.getElementById('res-notes').value, status: _editingReservaId ? (DB.reservas.find(x=>x.id===_editingReservaId)?.status || 'pendiente') : 'pendiente' };
+  const status = _editingReservaId ? (DB.reservas.find(x=>x.id===_editingReservaId)?.status || 'pendiente') : 'pendiente';
+  let obj;
   if (isHosp) {
     const cin = document.getElementById('res-checkin').value;
+    const open = document.querySelector('input[name="res-open-ended"]:checked').value === 'si';
     const cout = document.getElementById('res-checkout').value;
     const rate = parseFloat(document.getElementById('res-rate-h').value);
-    const open = document.getElementById('res-open-ended').checked;
-    if (!cin || (!cout && !open)) { alerts.innerHTML = '<div class="alert alert-danger">Completá fechas de ingreso y salida (o marcá sin fecha de salida).</div>'; return; }
+    if (!cin) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la fecha de ingreso.</div>'; return; }
+    if (!open && !cout) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la fecha de salida o marcá "Sin fecha de salida".</div>'; return; }
     if (!rate) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la tarifa.</div>'; return; }
-    obj = { ...obj, type: 'hospedaje', reserved_from: cin, check_out_date: open ? null : cout, open_ended: open, rate, rate_type: document.getElementById('res-rate-type').value };
+    const advAmt = document.querySelector('input[name="res-advance"]:checked').value === 'si'
+      ? parseFloat(document.getElementById('res-advance-amount').value) || 0 : 0;
+    const discPct = document.querySelector('input[name="res-discount"]:checked').value === 'si'
+      ? parseFloat(document.getElementById('res-discount-pct').value) || 0 : 0;
+    obj = { type: 'hospedaje', dog_id: dogId, reserved_from: cin, check_out_date: open ? null : cout,
+      open_ended: open, rate, rate_type: document.getElementById('res-rate-type').value,
+      is_exchange: document.getElementById('res-exchange').value === 'si',
+      notes: document.getElementById('res-notes').value,
+      advance_amount: advAmt || undefined, discount_pct: discPct || undefined, status };
   } else {
     const date = document.getElementById('res-date').value;
     const rate = parseFloat(document.getElementById('res-rate-d').value);
     if (!date || !rate) { alerts.innerHTML = '<div class="alert alert-danger">Completá fecha y tarifa.</div>'; return; }
-    obj = { ...obj, type: 'daycare', date, rate };
+    obj = { type: 'daycare', dog_id: dogId, date, rate,
+      notes: document.getElementById('res-dc-notes').value, status };
   }
   const arr = DB.reservas;
   if (_editingReservaId) {
@@ -9962,9 +10066,16 @@ function activateReserva(id) {
       id: DB.nextId(stays), dog_id: r.dog_id, check_in_date: r.reserved_from,
       check_out_date: r.check_out_date, open_ended: r.open_ended, rate: r.rate,
       rate_type: r.rate_type, service_type: 'hospedaje', status: 'activo',
-      notes: r.notes, is_exchange: false, late_pickup: false
+      notes: r.notes, is_exchange: !!r.is_exchange, late_pickup: false,
+      discount_pct: r.discount_pct || 0
     };
     stays.push(newStay);
+    // Register advance payment if any
+    if (r.advance_amount > 0) {
+      const pmts = DB.payments;
+      pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, amount: r.advance_amount, date: today(), notes: 'Adelanto desde reserva' });
+      DB.savePayments(pmts);
+    }
     DB.saveStays(stays);
   } else {
     const dcs = DB.daycares;
@@ -10270,87 +10381,129 @@ function deleteIntegration(id) {
 
 <!-- Modal reserva -->
 <div class="modal-overlay" id="modal-reserva">
-  <div class="modal" style="max-width:620px">
+  <div class="modal" style="max-width:680px">
     <div class="modal-title" id="res-modal-title">Nueva reserva</div>
     <div id="res-alerts"></div>
-    <!-- Mobile wizard progress bar -->
-    <div class="wizard-progress" style="display:none"><div class="wizard-bar" id="res-wizard-bar"></div></div>
-    <!-- Paso 1: Tipo -->
-    <div class="wizard-step">
-      <div class="form-group">
-        <label>Tipo de servicio *</label>
-        <div style="display:flex;gap:8px">
-          <button type="button" class="btn btn-secondary active" id="res-type-hosp" onclick="_setReservaType('hospedaje')">🏠 Hospedaje</button>
-          <button type="button" class="btn btn-secondary" id="res-type-dc" onclick="_setReservaType('daycare')">☀️ Daycare</button>
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Perro *</label>
-        <select id="res-dog" class="form-control"></select>
+    <!-- Selector de tipo -->
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Tipo de servicio *</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <button type="button" class="btn btn-secondary" id="res-type-hosp" onclick="_setReservaType('hospedaje')">🏠 Hospedaje</button>
+        <button type="button" class="btn btn-secondary" id="res-type-dc" onclick="_setReservaType('daycare')">☀️ Daycare</button>
       </div>
     </div>
-    <!-- Paso 2: Fechas / Tarifa hospedaje -->
-    <div class="wizard-step">
-      <div id="res-hosp-fields">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Fecha de ingreso *</label>
-            <input type="date" id="res-checkin" class="form-control">
-          </div>
-          <div class="form-group">
-            <label>Fecha de salida</label>
-            <input type="date" id="res-checkout" class="form-control">
-          </div>
-          <div class="form-group">
-            <label>Tarifa *</label>
-            <input type="number" id="res-rate-h" class="form-control" placeholder="S/ por noche" min="0">
-          </div>
-          <div class="form-group">
-            <label>Tipo de tarifa</label>
-            <select id="res-rate-type" class="form-control">
-              <option value="noche">Por noche</option>
-              <option value="dia">Por día</option>
-              <option value="fijo">Monto fijo</option>
-            </select>
-          </div>
-          <div class="form-group span2">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-              <input type="checkbox" id="res-open-ended"> Sin fecha de salida (estadía indefinida)
+
+    <!-- ── HOSPEDAJE ── -->
+    <div id="res-hosp-fields">
+      <!-- Perro con autocomplete -->
+      <div class="form-group" style="position:relative">
+        <label>Perro *</label>
+        <input type="text" id="res-dog-input" placeholder="Buscar por nombre o apellido…" autocomplete="off"
+          oninput="filterResDogSuggestions()" onfocus="filterResDogSuggestions()" onblur="hideResDogSuggestions()" onkeydown="resDogInputKeydown(event)">
+        <input type="hidden" id="res-dog">
+        <div id="res-dog-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border-md);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:220px;overflow-y:auto"></div>
+      </div>
+      <!-- Fechas -->
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Fecha de ingreso *</label>
+          <input type="date" id="res-checkin">
+        </div>
+        <div class="form-group">
+          <label>Fecha de salida</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
+              <input type="radio" name="res-open-ended" value="no" checked onchange="toggleResOpenEnded()"> Fecha conocida
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;font-size:13px;padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);white-space:nowrap">
+              <input type="radio" name="res-open-ended" value="si" onchange="toggleResOpenEnded()"> Sin fecha de salida
             </label>
           </div>
+          <input type="date" id="res-checkout">
+        </div>
+        <!-- Tarifa -->
+        <div class="form-group">
+          <label>Tipo de tarifa *</label>
+          <select id="res-rate-type">
+            <option value="nightly">Por noche</option>
+            <option value="daily">Por día</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tarifa (S/) *</label>
+          <input type="number" id="res-rate-h" placeholder="0" min="0" step="1">
+        </div>
+        <!-- Exchange -->
+        <div class="form-group">
+          <label>¿Es canje?</label>
+          <select id="res-exchange">
+            <option value="no">No</option>
+            <option value="si">Sí — S/ 0</option>
+          </select>
+        </div>
+        <div class="form-group span2">
+          <label>Observaciones</label>
+          <textarea id="res-notes" rows="2"></textarea>
         </div>
       </div>
-      <div id="res-dc-fields" style="display:none">
-        <div class="form-grid">
-          <div class="form-group">
-            <label>Fecha *</label>
-            <input type="date" id="res-date" class="form-control">
-          </div>
-          <div class="form-group">
-            <label>Tarifa *</label>
-            <input type="number" id="res-rate-d" class="form-control" placeholder="S/ daycare" min="0">
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- Paso 3: Notas -->
-    <div class="wizard-step">
+      <!-- Pago adelantado -->
       <div class="form-group">
-        <label>Observaciones</label>
-        <textarea id="res-notes" class="form-control" rows="3" placeholder="Notas adicionales…"></textarea>
+        <label>¿Hubo pago adelantado?</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-advance" value="no" checked onchange="toggleResAdvance()"> No</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-advance" value="si" onchange="toggleResAdvance()"> Sí</label>
+        </div>
+      </div>
+      <div id="res-advance-section" style="display:none;margin-bottom:12px">
+        <div class="form-group">
+          <label>Monto adelantado (S/)</label>
+          <input type="number" id="res-advance-amount" placeholder="0.00" min="0" step="0.01">
+        </div>
+      </div>
+      <!-- Descuento -->
+      <div class="form-group">
+        <label>¿Se aplicará descuento?</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-discount" value="no" checked onchange="toggleResDiscount()"> No</label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="res-discount" value="si" onchange="toggleResDiscount()"> Sí</label>
+        </div>
+      </div>
+      <div id="res-discount-section" style="display:none;margin-bottom:12px">
+        <div class="form-group">
+          <label>Porcentaje de descuento (%)</label>
+          <input type="number" id="res-discount-pct" placeholder="0" min="0" max="100" step="1">
+        </div>
       </div>
     </div>
-    <!-- Footer desktop -->
-    <div class="modal-footer desktop-only">
+
+    <!-- ── DAYCARE ── -->
+    <div id="res-dc-fields" style="display:none">
+      <div class="form-group" style="position:relative">
+        <label>Perro *</label>
+        <input type="text" id="res-dc-dog-input" placeholder="Buscar por nombre o apellido…" autocomplete="off"
+          oninput="filterResDcDogSuggestions()" onfocus="filterResDcDogSuggestions()" onblur="hideResDcDogSuggestions()" onkeydown="resDcDogInputKeydown(event)">
+        <input type="hidden" id="res-dc-dog">
+        <div id="res-dc-dog-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border-md);border-radius:0 0 8px 8px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:200;max-height:220px;overflow-y:auto"></div>
+      </div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Fecha *</label>
+          <input type="date" id="res-date">
+        </div>
+        <div class="form-group">
+          <label>Tarifa (S/) *</label>
+          <input type="number" id="res-rate-d" placeholder="0" min="0" step="1">
+        </div>
+        <div class="form-group span2">
+          <label>Observaciones</label>
+          <textarea id="res-dc-notes" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-reserva')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveReserva()">Guardar reserva</button>
-    </div>
-    <!-- Footer mobile wizard -->
-    <div class="modal-footer mobile-only" style="justify-content:space-between">
-      <button class="btn btn-secondary" id="res-wizard-back" style="display:none" onclick="_reservaWizardStep--;_renderReservaWizard()">← Atrás</button>
-      <button class="btn btn-secondary" onclick="closeModal('modal-reserva')">Cancelar</button>
-      <button class="btn btn-primary" id="res-wizard-next" onclick="_reservaWizardStep++;_renderReservaWizard()">Siguiente →</button>
-      <button class="btn btn-primary" id="res-wizard-save" style="display:none" onclick="saveReserva()">Guardar</button>
     </div>
   </div>
 </div>
