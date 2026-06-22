@@ -10008,6 +10008,11 @@ function _setReservaType(type) {
   document.getElementById('res-dc-step3-fields').style.display = type === 'daycare' ? '' : 'none';
   // Reset wizard to step 1 when type changes on mobile
   if (window.innerWidth <= 768) { _resWizCurrent = 1; _resWizRender(); }
+  // Trigger holiday checks on desktop (date already has value, onchange won't fire)
+  if (window.innerWidth > 768) {
+    if (type === 'daycare') renderResDcHolidayAlert();
+    else renderResHolidayAlert();
+  }
 }
 
 // ── Reserva wizard (mobile only) ──────────────────────────────────────────
@@ -10045,8 +10050,8 @@ function _resWizRender() {
 function _resWizStep(dir) {
   const next = _resWizCurrent + dir;
   if (next < 1 || next > _RES_WIZ_TOTAL) return;
+  const isHosp = document.getElementById('res-hosp-fields').style.display !== 'none';
   if (dir > 0 && _resWizCurrent === 1) {
-    const isHosp = document.getElementById('res-hosp-fields').style.display !== 'none';
     const dogId = isHosp
       ? document.getElementById('res-dog').value
       : document.getElementById('res-dc-dog').value;
@@ -10055,12 +10060,16 @@ function _resWizStep(dir) {
     if (!isHosp && !document.getElementById('res-date').value) { alert('Ingresá la fecha.'); return; }
   }
   if (dir > 0 && _resWizCurrent === 2) {
-    const isHosp = document.getElementById('res-hosp-fields').style.display !== 'none';
     const rate = parseFloat(isHosp ? document.getElementById('res-rate-h').value : document.getElementById('res-rate-d').value);
     if (!rate) { alert('Ingresá la tarifa.'); return; }
   }
   _resWizCurrent = next;
   _resWizRender();
+  // Trigger holiday alerts when reaching step 3 so they reflect current dates
+  if (next === 3) {
+    if (isHosp) renderResHolidayAlert();
+    else renderResDcHolidayAlert();
+  }
 }
 // ──────────────────────────────────────────────────────────────────────────
 
