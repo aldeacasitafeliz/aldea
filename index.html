@@ -9901,10 +9901,19 @@ function openReservaModal(id) {
   document.getElementById('res-checkout').style.display = '';
   document.querySelectorAll('input[name="res-advance"]')[0].checked = true;
   document.getElementById('res-advance-section').style.display = 'none';
-  document.getElementById('res-advance-amount') && (document.getElementById('res-advance-amount').value = '');
+  document.getElementById('res-advance-rows').innerHTML = '';
+  _resAdvRowCount = 0;
+  document.querySelectorAll('input[name="res-dc-advance"]')[0].checked = true;
+  document.getElementById('res-dc-advance-section').style.display = 'none';
+  document.getElementById('res-dc-advance-rows').innerHTML = '';
+  _resDcAdvRowCount = 0;
   document.querySelectorAll('input[name="res-discount"]')[0].checked = true;
   document.getElementById('res-discount-section').style.display = 'none';
   document.getElementById('res-discount-pct') && (document.getElementById('res-discount-pct').value = '');
+  document.getElementById('res-holiday-alert').style.display = 'none';
+  document.getElementById('res-dc-holiday-alert').style.display = 'none';
+  _resHolState    = { mode: 'pending', editList: null, from: null, to: null };
+  _resDcHolState  = { mode: 'pending', useHoliday: null, date: null };
   if (r) {
     const dog = DB.getDog(r.dog_id);
     const dogLabel = dog ? dog.name + ' ' + (dog.owner_last_name||'') : '';
@@ -9918,15 +9927,30 @@ function openReservaModal(id) {
       document.getElementById('res-exchange').value = r.is_exchange ? 'si' : 'no';
       document.getElementById('res-notes').value = r.notes || '';
       if (r.open_ended) document.querySelectorAll('input[name="res-open-ended"]')[1].checked = true;
-      if (r.advance_amount) {
+      // Advance payments — support both new array and legacy single amount
+      const advPmts = r.advance_payments?.length ? r.advance_payments
+        : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
+      if (advPmts.length) {
         document.querySelectorAll('input[name="res-advance"]')[1].checked = true;
         document.getElementById('res-advance-section').style.display = '';
-        document.getElementById('res-advance-amount').value = r.advance_amount;
+        advPmts.forEach(p => {
+          const idx = _resAdvRowCount++;
+          const row = document.createElement('div');
+          row.id = `res-adv-row-${idx}`;
+          row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px';
+          row.innerHTML = `<div class="form-group" style="margin:0">${idx===0?'<label style="font-size:12px">Monto (S/)</label>':''}<input type="number" class="res-adv-amount" placeholder="0" min="0" step="1" style="width:100%" value="${p.amount||''}"></div><div class="form-group" style="margin:0">${idx===0?'<label style="font-size:12px">Fecha</label>':''}<input type="date" class="res-adv-date" value="${p.date||today()}" style="width:100%"></div><button type="button" class="btn btn-danger btn-sm" style="margin-bottom:2px" onclick="document.getElementById('res-adv-row-${idx}').remove()">Eliminar</button>`;
+          document.getElementById('res-advance-rows').appendChild(row);
+        });
       }
       if (r.discount_pct) {
         document.querySelectorAll('input[name="res-discount"]')[1].checked = true;
         document.getElementById('res-discount-section').style.display = '';
         document.getElementById('res-discount-pct').value = r.discount_pct;
+      }
+      // Restore holiday state if saved
+      if (r.custom_holidays !== undefined) {
+        _resHolState = { mode: 'confirmed', editList: r.custom_holidays, from: r.reserved_from, to: r.check_out_date };
+        renderResHolidayAlert();
       }
     } else {
       document.getElementById('res-dc-dog-input').value = dogLabel;
@@ -9934,6 +9958,25 @@ function openReservaModal(id) {
       document.getElementById('res-date').value = r.date || '';
       document.getElementById('res-rate-d').value = r.rate || '';
       document.getElementById('res-dc-notes').value = r.notes || '';
+      // Advance payments for daycare
+      const dcAdvPmts = r.advance_payments?.length ? r.advance_payments
+        : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
+      if (dcAdvPmts.length) {
+        document.querySelectorAll('input[name="res-dc-advance"]')[1].checked = true;
+        document.getElementById('res-dc-advance-section').style.display = '';
+        dcAdvPmts.forEach(p => {
+          const idx = _resDcAdvRowCount++;
+          const row = document.createElement('div');
+          row.id = `res-dc-adv-row-${idx}`;
+          row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px';
+          row.innerHTML = `<div class="form-group" style="margin:0">${idx===0?'<label style="font-size:12px">Monto (S/)</label>':''}<input type="number" class="res-dc-adv-amount" placeholder="0" min="0" step="1" style="width:100%" value="${p.amount||''}"></div><div class="form-group" style="margin:0">${idx===0?'<label style="font-size:12px">Fecha</label>':''}<input type="date" class="res-dc-adv-date" value="${p.date||today()}" style="width:100%"></div><button type="button" class="btn btn-danger btn-sm" style="margin-bottom:2px" onclick="document.getElementById('res-dc-adv-row-${idx}').remove()">Eliminar</button>`;
+          document.getElementById('res-dc-advance-rows').appendChild(row);
+        });
+      }
+      if (r.dc_holiday !== undefined) {
+        _resDcHolState = { date: r.date, useHoliday: r.dc_holiday };
+        renderResDcHolidayAlert();
+      }
     }
   }
   document.getElementById('res-modal-title').textContent = id ? 'Ver / editar reserva' : 'Nueva reserva';
@@ -9954,17 +9997,187 @@ function toggleResOpenEnded() {
   const open = document.querySelector('input[name="res-open-ended"]:checked').value === 'si';
   document.getElementById('res-checkout').style.display = open ? 'none' : '';
 }
+let _resAdvRowCount = 0;
+let _resDcAdvRowCount = 0;
+let _resHolState    = { mode: 'pending', editList: null, from: null, to: null };
+let _resDcHolState  = { mode: 'pending', useHoliday: null, date: null };
+
 function toggleResAdvance() {
-  document.getElementById('res-advance-section').style.display =
-    document.querySelector('input[name="res-advance"]:checked').value === 'si' ? '' : 'none';
+  const val = document.querySelector('input[name="res-advance"]:checked').value;
+  document.getElementById('res-advance-section').style.display = val === 'si' ? '' : 'none';
+  if (val === 'si' && document.getElementById('res-advance-rows').children.length === 0) {
+    _resAdvRowCount = 0;
+    addResAdvRow();
+  }
 }
+function addResAdvRow() {
+  const idx = _resAdvRowCount++;
+  const row = document.createElement('div');
+  row.id = `res-adv-row-${idx}`;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px';
+  row.innerHTML = `
+    <div class="form-group" style="margin:0">
+      ${idx===0?'<label style="font-size:12px">Monto (S/)</label>':''}
+      <input type="number" class="res-adv-amount" placeholder="0" min="0" step="1" style="width:100%">
+    </div>
+    <div class="form-group" style="margin:0">
+      ${idx===0?'<label style="font-size:12px">Fecha</label>':''}
+      <input type="date" class="res-adv-date" value="${today()}" style="width:100%">
+    </div>
+    <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:2px" onclick="document.getElementById('res-adv-row-${idx}').remove()">Eliminar</button>`;
+  document.getElementById('res-advance-rows').appendChild(row);
+}
+
 function toggleResDiscount() {
   document.getElementById('res-discount-section').style.display =
     document.querySelector('input[name="res-discount"]:checked').value === 'si' ? '' : 'none';
 }
 function toggleResDcAdvance() {
-  document.getElementById('res-dc-advance-section').style.display =
-    document.querySelector('input[name="res-dc-advance"]:checked').value === 'si' ? '' : 'none';
+  const val = document.querySelector('input[name="res-dc-advance"]:checked').value;
+  document.getElementById('res-dc-advance-section').style.display = val === 'si' ? '' : 'none';
+  if (val === 'si' && document.getElementById('res-dc-advance-rows').children.length === 0) {
+    _resDcAdvRowCount = 0;
+    addResDcAdvRow();
+  }
+}
+function addResDcAdvRow() {
+  const idx = _resDcAdvRowCount++;
+  const row = document.createElement('div');
+  row.id = `res-dc-adv-row-${idx}`;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px';
+  row.innerHTML = `
+    <div class="form-group" style="margin:0">
+      ${idx===0?'<label style="font-size:12px">Monto (S/)</label>':''}
+      <input type="number" class="res-dc-adv-amount" placeholder="0" min="0" step="1" style="width:100%">
+    </div>
+    <div class="form-group" style="margin:0">
+      ${idx===0?'<label style="font-size:12px">Fecha</label>':''}
+      <input type="date" class="res-dc-adv-date" value="${today()}" style="width:100%">
+    </div>
+    <button type="button" class="btn btn-danger btn-sm" style="margin-bottom:2px" onclick="document.getElementById('res-dc-adv-row-${idx}').remove()">Eliminar</button>`;
+  document.getElementById('res-dc-advance-rows').appendChild(row);
+}
+
+function renderResHolidayAlert() {
+  const el = document.getElementById('res-holiday-alert');
+  if (!el) return;
+  const from = document.getElementById('res-checkin').value;
+  const to   = document.getElementById('res-checkout').value;
+  if (!from || !to) { el.style.display = 'none'; return; }
+  if (_resHolState.from !== from || _resHolState.to !== to) {
+    _resHolState = { mode: 'pending', editList: null, from, to };
+  }
+  const detected = getHolidaysInRange(from, to);
+  if (!detected.length && _resHolState.mode === 'pending') { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  if (_resHolState.mode === 'pending') {
+    el.innerHTML = `
+      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:8px;padding:10px 12px">
+        <div style="font-weight:600;margin-bottom:6px">🎉 Feriados detectados en la reserva:</div>
+        <div style="margin-bottom:10px">${detected.map(h=>`<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;background:var(--amber-100);border-radius:5px;font-size:12px"><strong>${fmtDate(h.date)}</strong> — ${h.name}</span>`).join('')}</div>
+        <div style="font-size:12px;margin-bottom:8px">Se agregarán <strong>S/ ${detected.length * HOLIDAY_SURCHARGE}</strong> de adicional por feriados. ¿Estás conforme?</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="resHolConfirm()">✓ Sí, aplicar</button>
+          <button class="btn btn-secondary btn-sm" onclick="resHolEdit()">✏️ No, editar feriados</button>
+        </div>
+      </div>`;
+  } else if (_resHolState.mode === 'editing') {
+    const list = _resHolState.editList || [];
+    el.innerHTML = `
+      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:8px;padding:10px 12px">
+        <div style="font-weight:600;margin-bottom:8px">✏️ Editar feriados aplicables a esta reserva</div>
+        <div id="res-hol-edit-list" style="margin-bottom:10px">${list.length
+          ? list.map(h=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <span style="flex:1;font-size:12px;padding:3px 8px;background:var(--amber-100);border-radius:5px"><strong>${fmtDate(h.date)}</strong> — ${h.name}</span>
+              <button class="btn btn-danger btn-sm" style="padding:2px 8px" onclick="resHolRemove('${h.date}')">✕</button>
+            </div>`).join('')
+          : '<div style="font-size:12px;color:var(--text-muted);padding:4px 0">Sin feriados aplicados.</div>'}</div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+          <input type="date" id="res-hol-add-date" class="form-control" style="max-width:160px;height:32px">
+          <input type="text" id="res-hol-add-name" class="form-control" style="flex:1;height:32px" placeholder="Nombre del feriado">
+          <button class="btn btn-secondary btn-sm" onclick="resHolAdd()">+ Agregar</button>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="resHolConfirm()">✓ Confirmar</button>
+          <button class="btn btn-secondary btn-sm" onclick="resHolCancel()">Cancelar</button>
+        </div>
+      </div>`;
+  } else if (_resHolState.mode === 'confirmed') {
+    const list = _resHolState.editList;
+    const appliedHols = list !== null ? list : getHolidaysInRange(from, to);
+    el.innerHTML = `
+      <div style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div>
+          <span style="font-weight:600;color:var(--green-800)">✓ Feriados confirmados:</span>
+          <span style="margin-left:6px;font-size:12px">${appliedHols.length
+            ? appliedHols.map(h=>`<strong>${fmtDate(h.date)}</strong> — ${h.name}`).join(' · ')
+            : '<em style="color:var(--text-muted)">Ninguno aplicado</em>'}</span>
+          ${appliedHols.length ? `<div style="font-size:12px;margin-top:4px;color:var(--green-800)">Adicional: +S/ ${appliedHols.length * HOLIDAY_SURCHARGE}</div>` : ''}
+        </div>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap" onclick="resHolEdit()">✏️ Editar</button>
+      </div>`;
+  }
+}
+function resHolConfirm() {
+  _resHolState.mode = 'confirmed';
+  if (!_resHolState.editList) _resHolState.editList = null;
+  renderResHolidayAlert();
+}
+function resHolEdit() {
+  _resHolState.mode = 'editing';
+  if (!_resHolState.editList) {
+    _resHolState.editList = [...getHolidaysInRange(_resHolState.from, _resHolState.to)];
+  }
+  renderResHolidayAlert();
+}
+function resHolAdd() {
+  const date = document.getElementById('res-hol-add-date')?.value;
+  const name = document.getElementById('res-hol-add-name')?.value.trim() || getHolidayDefaultName(date);
+  if (!date) { alert('Ingresa una fecha.'); return; }
+  if (_resHolState.editList.some(h => h.date === date)) { alert('Esa fecha ya está en la lista.'); return; }
+  _resHolState.editList.push({ date, name });
+  _resHolState.editList.sort((a,b) => a.date.localeCompare(b.date));
+  renderResHolidayAlert();
+}
+function resHolRemove(date) {
+  _resHolState.editList = _resHolState.editList.filter(h => h.date !== date);
+  renderResHolidayAlert();
+}
+function resHolCancel() {
+  _resHolState.mode = 'pending';
+  _resHolState.editList = null;
+  renderResHolidayAlert();
+}
+
+function renderResDcHolidayAlert() {
+  const el = document.getElementById('res-dc-holiday-alert');
+  if (!el) return;
+  const date = document.getElementById('res-date').value;
+  if (!date) { el.style.display = 'none'; return; }
+  if (_resDcHolState.date !== date) {
+    _resDcHolState = { mode: 'pending', useHoliday: null, date };
+  }
+  const hols = getHolidaysInRange(date, date);
+  if (!hols.length && _resDcHolState.useHoliday === null) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  if (_resDcHolState.useHoliday === null) {
+    el.innerHTML = `
+      <div style="background:var(--amber-50);border:1px solid var(--amber-200);border-radius:8px;padding:10px 12px">
+        <div style="font-weight:600;margin-bottom:6px">🎉 ${hols[0].name} — ¿aplicar adicional de feriado?</div>
+        <div style="font-size:12px;margin-bottom:8px">Se agregarán <strong>S/ ${HOLIDAY_SURCHARGE}</strong> de adicional por feriado.</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="_resDcHolState.useHoliday=true;renderResDcHolidayAlert()">✓ Sí, aplicar</button>
+          <button class="btn btn-secondary btn-sm" onclick="_resDcHolState.useHoliday=false;renderResDcHolidayAlert()">No aplicar</button>
+        </div>
+      </div>`;
+  } else {
+    const applied = _resDcHolState.useHoliday;
+    el.innerHTML = `
+      <div style="background:${applied?'var(--green-50)':'var(--surface)'};border:1px solid ${applied?'var(--green-200)':'var(--border)'};border-radius:8px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:13px">${applied?`✓ <strong>Feriado aplicado</strong> — +S/ ${HOLIDAY_SURCHARGE}`:'✗ Feriado no aplicado'}</span>
+        <button class="btn btn-secondary btn-sm" onclick="_resDcHolState.useHoliday=null;renderResDcHolidayAlert()">Cambiar</button>
+      </div>`;
+  }
 }
 function toggleResDcDiscount() {
   document.getElementById('res-dc-discount-section').style.display =
@@ -10070,29 +10283,47 @@ function saveReserva() {
     if (!cin) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la fecha de ingreso.</div>'; return; }
     if (!open && !cout) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la fecha de salida o marcá "Sin fecha de salida".</div>'; return; }
     if (!rate) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la tarifa.</div>'; return; }
-    const advAmt = document.querySelector('input[name="res-advance"]:checked').value === 'si'
-      ? parseFloat(document.getElementById('res-advance-amount').value) || 0 : 0;
+    const advRows = [...document.querySelectorAll('#res-advance-rows > div')].map(row => ({
+      amount: parseFloat(row.querySelector('.res-adv-amount')?.value) || 0,
+      date: row.querySelector('.res-adv-date')?.value || today()
+    })).filter(p => p.amount > 0);
+    const hasAdv = document.querySelector('input[name="res-advance"]:checked').value === 'si';
+    const advPayments = hasAdv ? advRows : [];
     const discPct = document.querySelector('input[name="res-discount"]:checked').value === 'si'
       ? parseFloat(document.getElementById('res-discount-pct').value) || 0 : 0;
+    const customHols = _resHolState.mode === 'confirmed'
+      ? (_resHolState.editList !== null ? _resHolState.editList : getHolidaysInRange(cin, open ? cin : cout))
+      : undefined;
     obj = { type: 'hospedaje', dog_id: dogId, reserved_from: cin, check_out_date: open ? null : cout,
       open_ended: open, rate, rate_type: document.getElementById('res-rate-type').value,
       is_exchange: document.getElementById('res-exchange').value === 'si',
       notes: document.getElementById('res-notes').value,
-      advance_amount: advAmt || undefined, discount_pct: discPct || undefined, status };
+      advance_payments: advPayments.length ? advPayments : undefined,
+      advance_amount: advPayments.reduce((s,p)=>s+p.amount,0) || undefined,
+      discount_pct: discPct || undefined,
+      custom_holidays: customHols, status };
   } else {
     const date = document.getElementById('res-date').value;
     const rate = parseFloat(document.getElementById('res-rate-d').value);
     if (!date || !rate) { alerts.innerHTML = '<div class="alert alert-danger">Completá fecha y tarifa.</div>'; return; }
-    const dcAdvAmt = document.querySelector('input[name="res-dc-advance"]:checked')?.value === 'si'
-      ? parseFloat(document.getElementById('res-dc-advance-amount').value) || 0 : 0;
+    const dcAdvRows = [...document.querySelectorAll('#res-dc-advance-rows > div')].map(row => ({
+      amount: parseFloat(row.querySelector('.res-dc-adv-amount')?.value) || 0,
+      date: row.querySelector('.res-dc-adv-date')?.value || today()
+    })).filter(p => p.amount > 0);
+    const hasDcAdv = document.querySelector('input[name="res-dc-advance"]:checked')?.value === 'si';
+    const dcAdvPayments = hasDcAdv ? dcAdvRows : [];
     const dcDiscPct = document.querySelector('input[name="res-dc-discount"]:checked')?.value === 'si'
       ? parseFloat(document.getElementById('res-dc-discount-pct').value) || 0 : 0;
     const dcManual = document.querySelector('input[name="res-dc-manual"]:checked')?.value === 'si'
       ? parseFloat(document.getElementById('res-dc-manual-amount').value) || null : null;
+    const dcHoliday = _resDcHolState.date === date ? _resDcHolState.useHoliday : undefined;
     obj = { type: 'daycare', dog_id: dogId, date, rate,
       notes: document.getElementById('res-dc-notes').value,
-      advance_amount: dcAdvAmt || undefined, discount_pct: dcDiscPct || undefined,
-      manual_total: dcManual || undefined, status };
+      advance_payments: dcAdvPayments.length ? dcAdvPayments : undefined,
+      advance_amount: dcAdvPayments.reduce((s,p)=>s+p.amount,0) || undefined,
+      discount_pct: dcDiscPct || undefined,
+      manual_total: dcManual || undefined,
+      dc_holiday: dcHoliday, status };
   }
   const arr = DB.reservas;
   if (_editingReservaId) {
@@ -10119,25 +10350,35 @@ function activateReserva(id) {
       check_out_date: r.check_out_date, open_ended: r.open_ended, rate: r.rate,
       rate_type: r.rate_type, service_type: 'hospedaje', status: 'activo',
       notes: r.notes, is_exchange: !!r.is_exchange, late_pickup: false,
-      discount_pct: r.discount_pct || 0
+      discount_pct: r.discount_pct || 0,
+      custom_holidays: r.custom_holidays
     };
     stays.push(newStay);
-    // Register advance payment if any
-    if (r.advance_amount > 0) {
+    // Register all advance payments
+    const advPmts = r.advance_payments?.length ? r.advance_payments
+      : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
+    if (advPmts.length) {
       const pmts = DB.payments;
-      pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, amount: r.advance_amount, date: today(), notes: 'Adelanto desde reserva' });
+      advPmts.forEach(p => {
+        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva' });
+      });
       DB.savePayments(pmts);
     }
     DB.saveStays(stays);
   } else {
     const dcs = DB.daycares;
     const newDc = { id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
-      notes: r.notes, advance_paid: !!r.advance_amount,
-      discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined };
+      notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
+      discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined,
+      use_holiday: r.dc_holiday };
     dcs.push(newDc);
-    if (r.advance_amount > 0) {
+    const dcAdvPmts = r.advance_payments?.length ? r.advance_payments
+      : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
+    if (dcAdvPmts.length) {
       const pmts = DB.payments;
-      pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: r.advance_amount, date: today(), notes: 'Adelanto desde reserva daycare' });
+      dcAdvPmts.forEach(p => {
+        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva daycare' });
+      });
       DB.savePayments(pmts);
     }
     DB.saveDaycares(dcs);
@@ -10467,7 +10708,7 @@ function deleteIntegration(id) {
       <div class="form-grid">
         <div class="form-group">
           <label>Fecha de ingreso *</label>
-          <input type="date" id="res-checkin">
+          <input type="date" id="res-checkin" onchange="renderResHolidayAlert()">
         </div>
         <div class="form-group">
           <label>Fecha de salida</label>
@@ -10479,7 +10720,7 @@ function deleteIntegration(id) {
               <input type="radio" name="res-open-ended" value="si" onchange="toggleResOpenEnded()"> Sin fecha de salida
             </label>
           </div>
-          <input type="date" id="res-checkout">
+          <input type="date" id="res-checkout" onchange="renderResHolidayAlert()">
         </div>
         <!-- Tarifa -->
         <div class="form-group">
@@ -10515,11 +10756,10 @@ function deleteIntegration(id) {
         </div>
       </div>
       <div id="res-advance-section" style="display:none;margin-bottom:12px">
-        <div class="form-group">
-          <label>Monto adelantado (S/)</label>
-          <input type="number" id="res-advance-amount" placeholder="0.00" min="0" step="0.01">
-        </div>
+        <div id="res-advance-rows"></div>
+        <button type="button" class="btn btn-sm" style="margin-top:4px" onclick="addResAdvRow()">+ Agregar adelanto</button>
       </div>
+      <div id="res-holiday-alert" style="margin-bottom:12px"></div>
       <!-- Descuento -->
       <div class="form-group">
         <label>¿Se aplicará descuento?</label>
@@ -10548,7 +10788,7 @@ function deleteIntegration(id) {
       <div class="form-grid">
         <div class="form-group">
           <label>Fecha *</label>
-          <input type="date" id="res-date">
+          <input type="date" id="res-date" onchange="renderResDcHolidayAlert()">
         </div>
         <div class="form-group">
           <label>Tarifa (S/) *</label>
@@ -10568,11 +10808,10 @@ function deleteIntegration(id) {
         </div>
       </div>
       <div id="res-dc-advance-section" style="display:none;margin-bottom:12px">
-        <div class="form-group">
-          <label>Monto adelantado (S/)</label>
-          <input type="number" id="res-dc-advance-amount" placeholder="0.00" min="0" step="0.01">
-        </div>
+        <div id="res-dc-advance-rows"></div>
+        <button type="button" class="btn btn-sm" style="margin-top:4px" onclick="addResDcAdvRow()">+ Agregar adelanto</button>
       </div>
+      <div id="res-dc-holiday-alert" style="margin-bottom:12px"></div>
       <!-- Descuento daycare -->
       <div class="form-group">
         <label>¿Se aplicará descuento?</label>
