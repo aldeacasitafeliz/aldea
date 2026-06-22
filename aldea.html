@@ -3112,8 +3112,13 @@ function saveDog() {
       incomplete, created_at: today(), ...careData });
   }
   DB.saveDogs(dogs);
+  const savedDogId = editingDogId || dogs[dogs.length - 1].id;
   closeModal('modal-dog');
   renderDogsTable();
+  if (_integFromId && !editingDogId) {
+    _integFromId = null;
+    _showPostIntegOptions(savedDogId);
+  }
 }
 
 function openNewDog() {
@@ -10118,22 +10123,64 @@ function saveIntegResult() {
   if (tabBtn) tabBtn.classList.add('active');
   renderIntegrationsPage();
   renderCaretakersList();
+  if (result === 'aceptado') prefillDogFromInteg(id);
+}
+
+let _integFromId = null;
+
+function _showPostIntegOptions(dogId) {
+  const dog = DB.getDog(dogId);
+  document.getElementById('post-integ-dog-name').textContent = dog?.name || 'el perro';
+  window._postIntegDogId = dogId;
+  openModal('modal-post-integ');
+}
+
+function postIntegGoStay() {
+  closeModal('modal-post-integ');
+  showPage('stays');
+  setTimeout(() => {
+    openStayModal();
+    setTimeout(() => {
+      const sel = document.getElementById('stay-dog');
+      if (sel) { sel.value = window._postIntegDogId; sel.dispatchEvent(new Event('change')); }
+      const dogInput = document.getElementById('stay-dog-input');
+      const dog = DB.getDog(window._postIntegDogId);
+      if (dogInput && dog) dogInput.value = dog.name + ' ' + (dog.owner_last_name||'');
+    }, 100);
+  }, 100);
+}
+
+function postIntegGoDaycare() {
+  closeModal('modal-post-integ');
+  showPage('daycare');
+  setTimeout(() => {
+    openDaycareModal();
+    setTimeout(() => {
+      const sel = document.getElementById('dc-dog');
+      if (sel) { sel.value = window._postIntegDogId; sel.dispatchEvent(new Event('change')); }
+      const dcInput = document.getElementById('dc-dog-input');
+      const dog = DB.getDog(window._postIntegDogId);
+      if (dcInput && dog) dcInput.value = dog.name + ' ' + (dog.owner_last_name||'');
+    }, 100);
+  }, 100);
 }
 
 function prefillDogFromInteg(id) {
   const integ = DB.integrations.find(x => x.id === id);
   if (!integ) return;
+  _integFromId = id;
   openNewDog();
-  // Pre-fill name from dog_name (first word as name, rest could be ignored or split)
-  const parts = integ.dog_name.trim().split(' ');
-  const nameInput = document.getElementById('dog-name');
-  if (nameInput) nameInput.value = parts[0] || integ.dog_name;
-  // Pre-fill owner info from contact
-  const ownerInput = document.getElementById('dog-owner-name');
-  if (ownerInput && integ.contact_name) ownerInput.value = integ.contact_name;
-  const phoneInput = document.getElementById('dog-owner-phone');
-  if (phoneInput && integ.phone) phoneInput.value = integ.phone;
-  alert('✅ Formulario de perro pre-llenado con los datos de la integración.');
+  setTimeout(() => {
+    const nameInput = document.getElementById('dog-name');
+    if (nameInput) nameInput.value = integ.dog_name.trim();
+    // Pre-fill primary owner via _dogOwners
+    if (integ.contact_name && _dogOwners.length > 0) {
+      _dogOwners[0].name = integ.contact_name;
+      _dogOwners[0].phone = integ.phone || '';
+    }
+    renderOwnersUI();
+    document.getElementById('dog-modal-title').textContent = '🤝 Perro de integración — Registrar';
+  }, 50);
 }
 
 function deleteIntegration(id) {
@@ -10322,6 +10369,28 @@ function deleteIntegration(id) {
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-integ-result')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveIntegResult()">Guardar resultado</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal post-integración -->
+<div class="modal-overlay" id="modal-post-integ">
+  <div class="modal" style="max-width:420px;text-align:center">
+    <div style="font-size:36px;margin-bottom:8px">🎉</div>
+    <div class="modal-title" style="justify-content:center">¡Perro registrado!</div>
+    <p style="color:var(--text-muted);font-size:14px;margin:0 0 24px">
+      <strong id="post-integ-dog-name"></strong> fue agregado exitosamente.<br>¿Qué querés hacer ahora?
+    </p>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button class="btn btn-primary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="postIntegGoStay()">
+        🏠 Registrar hospedaje
+      </button>
+      <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;justify-content:center" onclick="postIntegGoDaycare()">
+        ☀️ Registrar daycare
+      </button>
+      <button class="btn btn-secondary" style="width:100%;padding:14px;font-size:15px;justify-content:center;color:var(--text-muted)" onclick="closeModal('modal-post-integ')">
+        Cerrar
+      </button>
     </div>
   </div>
 </div>
