@@ -10012,7 +10012,7 @@ function renderIntegrationsPage() {
       <td class="text-sm">${ctNames}</td>
       <td>${resBadge}${i.rejection_reason?`<br><span class="text-muted text-sm">${i.rejection_reason}</span>`:''}</td>
       <td style="white-space:nowrap">
-        ${i.result==='pendiente'?`<button class="btn btn-primary btn-sm" onclick="openIntegResultModal(${i.id})">Resultado</button> `:''}
+        ${i.result==='pendiente'?`<button class="btn btn-primary btn-sm" onclick="openIntegResultModal(${i.id})">Resultado</button> `:`<button class="btn btn-secondary btn-sm" onclick="openIntegResultModal(${i.id})">✏️ Resultado</button> `}
         ${i.result==='aceptado'?`<button class="btn btn-secondary btn-sm" onclick="prefillDogFromInteg(${i.id})">→ Perro</button> `:''}
         <button class="btn btn-secondary btn-sm" onclick="openIntegrationModal(${i.id})">Ver</button>
         <button class="btn btn-danger btn-sm" onclick="deleteIntegration(${i.id})">✕</button>
