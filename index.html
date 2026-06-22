@@ -10302,12 +10302,14 @@ function deleteIntegration(id) {
     <input type="hidden" id="integ-result-id">
     <div class="form-group">
       <label>Resultado *</label>
-      <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="radio" name="integ-result" value="aceptado" onchange="document.getElementById('integ-result-reason-wrap').style.display='none'"> ✅ Aceptado — el perro puede ingresar
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--green-50);border:1px solid var(--green-200,#bbf7d0);border-radius:8px;cursor:pointer">
+          <input type="radio" name="integ-result" value="aceptado" onchange="document.getElementById('integ-result-reason-wrap').style.display='none'" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--green-600,#16a34a)">
+          <div><div style="font-weight:600;font-size:14px;color:var(--green-800)">✅ Aceptado</div><div style="font-size:12px;color:var(--green-700)">El perro puede ingresar a la aldea</div></div>
         </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="radio" name="integ-result" value="rechazado" onchange="document.getElementById('integ-result-reason-wrap').style.display=''"> ❌ Rechazado
+        <label style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--red-50,#fff1f2);border:1px solid var(--red-200,#fecdd3);border-radius:8px;cursor:pointer">
+          <input type="radio" name="integ-result" value="rechazado" onchange="document.getElementById('integ-result-reason-wrap').style.display=''" style="width:18px;height:18px;flex-shrink:0;accent-color:var(--red-500,#ef4444)">
+          <div><div style="font-weight:600;font-size:14px;color:var(--red-800,#991b1b)">❌ Rechazado</div><div style="font-size:12px;color:var(--red-700,#b91c1c)">El perro no fue aceptado en esta integración</div></div>
         </label>
       </div>
     </div>
