@@ -5167,7 +5167,7 @@ function renderStaysTable() {
   const allStays = DB.stays.sort((a,b) => b.check_in_date.localeCompare(a.check_in_date));
   const d = today();
   const stays = _staysActiveTab === 'activos'
-    ? allStays.filter(s => s.status !== 'cancelado' && (s.open_ended || !s.check_out_date || s.check_out_date >= d))
+    ? allStays.filter(s => s.status !== 'cancelado' && s.status !== 'finalizado' && !s.pickup_time && (s.open_ended || !s.check_out_date || s.check_out_date >= d))
     : allStays;
   const el = document.getElementById('stays-table-wrap');
   if (!stays.length) {
