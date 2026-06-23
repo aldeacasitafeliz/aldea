@@ -1008,6 +1008,7 @@ tr:hover td { background: var(--gray-50); }
         <button class="tab-btn active" onclick="switchCaretakerTab('lista',this)">Cuidadoras</button>
         <button class="tab-btn" onclick="switchCaretakerTab('resumen',this)">Panel resumen</button>
         <button class="tab-btn" onclick="switchCaretakerTab('vacaciones',this)">Vacaciones</button>
+        <button class="tab-btn" onclick="switchCaretakerTab('registros',this)">Registros</button>
       </div>
       <div id="ct-tab-lista" class="tab-panel active">
         <div class="card" style="padding:0;overflow:hidden"><div id="ct-list-wrap"></div></div>
@@ -1024,6 +1025,36 @@ tr:hover td { background: var(--gray-50); }
       </div>
       <div id="ct-tab-vacaciones" class="tab-panel">
         <div class="card" style="padding:0;overflow:hidden"><div id="ct-vac-wrap"></div></div>
+      </div>
+      <div id="ct-tab-registros" class="tab-panel">
+        <div class="summary-filter" style="flex-wrap:wrap;gap:8px">
+          <select id="reg-filter-period" onchange="toggleRegCustomRange()" style="width:160px">
+            <option value="all">Todo el tiempo</option>
+            <option value="today">Hoy</option>
+            <option value="week">Esta semana</option>
+            <option value="month">Este mes</option>
+            <option value="custom">Rango personalizado</option>
+          </select>
+          <span id="reg-custom-range" style="display:none;align-items:center;gap:6px">
+            <input type="date" id="reg-from" style="width:140px">
+            <span style="color:var(--text-muted)">—</span>
+            <input type="date" id="reg-to" style="width:140px">
+          </span>
+          <select id="reg-filter-type" style="width:160px">
+            <option value="all">Todos los tipos</option>
+            <option value="hospedaje">Hospedaje</option>
+            <option value="daycare">Daycare</option>
+            <option value="restaurante">Restaurante</option>
+            <option value="reserva">Reserva</option>
+            <option value="incidencia">Incidencia</option>
+            <option value="recojo">Recojo/Salida</option>
+          </select>
+          <select id="reg-filter-ct" style="width:160px">
+            <option value="all">Todas las cuidadoras</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="renderRegistrosStats()">Actualizar</button>
+        </div>
+        <div id="ct-registros-wrap"></div>
       </div>
     </div>
 
@@ -1539,6 +1570,14 @@ tr:hover td { background: var(--gray-50); }
     </div><!-- /stay-step-3 -->
     <!-- STEP 4: Cuidadora -->
     <div id="stay-step-4">
+    <div id="stay-reg-ct-group" style="margin-bottom:16px">
+      <div class="form-group">
+        <label>Cuidadora que registra *</label>
+        <select id="stay-reg-ct">
+          <option value="">— Seleccionar —</option>
+        </select>
+      </div>
+    </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Cuidadora asignada</div>
       <div class="form-grid">
@@ -1648,8 +1687,36 @@ tr:hover td { background: var(--gray-50); }
           <input type="date" id="dc-date" onchange="renderDcHolidayAlert()">
         </div>
         <div class="form-group">
+          <label>Tipo de cobro</label>
+          <select id="dc-billing-type" onchange="toggleDcBillingType()">
+            <option value="daily">Por día</option>
+            <option value="hourly">Por horas</option>
+          </select>
+        </div>
+        <!-- Daily rate (default) -->
+        <div class="form-group" id="dc-rate-group">
           <label>Tarifa (S/) *</label>
           <input type="number" id="dc-rate" placeholder="0" min="0" step="1">
+        </div>
+        <!-- Hourly fields -->
+        <div id="dc-hourly-group" style="display:none;grid-column:span 2">
+          <div class="form-grid" style="margin:0">
+            <div class="form-group">
+              <label>Tarifa por hora (S/) *</label>
+              <input type="number" id="dc-hourly-rate" placeholder="0" min="0" step="0.5" oninput="updateDcHourlyPreview()">
+            </div>
+            <div class="form-group">
+              <label>Hora de ingreso</label>
+              <input type="time" id="dc-hora-ingreso" onchange="updateDcHourlyPreview()">
+            </div>
+            <div class="form-group">
+              <label>Hora de salida (estimada)</label>
+              <input type="time" id="dc-hora-salida" onchange="updateDcHourlyPreview()">
+            </div>
+            <div class="form-group">
+              <div id="dc-hourly-preview" style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--green-800);display:none"></div>
+            </div>
+          </div>
         </div>
         <div class="form-group span2">
           <label>Observaciones</label>
@@ -1720,6 +1787,12 @@ tr:hover td { background: var(--gray-50); }
     <!-- STEP 3: Cuidadora -->
     <div id="dc-step-3">
       <div class="form-grid">
+        <div class="form-group span2" id="dc-reg-ct-group">
+          <label>Cuidadora que registra *</label>
+          <select id="dc-reg-ct">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
         <div class="form-group">
           <label>Cuidadora asignada</label>
           <select id="dc-caretaker">
@@ -1756,8 +1829,9 @@ tr:hover td { background: var(--gray-50); }
     <div class="modal-title">Registrar recojo</div>
     <div id="pickup-stay-info" style="background:var(--gray-50);border:1px solid var(--border-md);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px"></div>
     <div class="form-grid">
-      <div class="form-group" id="pickup-date-group" style="display:none">
-        <label>Fecha real de salida *</label>
+      <div class="form-group span2" id="pickup-date-group">
+        <label id="pickup-date-label">Fecha real de salida *</label>
+        <div id="pickup-scheduled-info" style="font-size:12px;color:var(--text-muted);margin-bottom:4px"></div>
         <input type="date" id="pickup-date" class="form-control" onchange="updatePickupPreview()">
       </div>
       <div class="form-group">
@@ -1765,8 +1839,8 @@ tr:hover td { background: var(--gray-50); }
         <input type="time" id="pickup-time" class="form-control">
       </div>
       <div class="form-group">
-        <label>Registrado por</label>
-        <input type="text" id="pickup-user" placeholder="Nombre" class="form-control">
+        <label>Cuidadora que registra *</label>
+        <select id="pickup-reg-ct" class="form-control"></select>
       </div>
       <div class="form-group span2">
         <label>¿Se cobra tarifa completa el día de salida?</label>
@@ -2179,8 +2253,10 @@ tr:hover td { background: var(--gray-50); }
         <input type="date" id="inc-date">
       </div>
       <div class="form-group">
-        <label>Registrado por</label>
-        <input type="text" id="inc-user" placeholder="Nombre del encargado">
+        <label>Cuidadora que registra *</label>
+        <select id="inc-reg-ct">
+          <option value="">— Seleccionar —</option>
+        </select>
       </div>
       <div class="form-group span2">
         <label>Descripción de lo ocurrido *</label>
@@ -2539,6 +2615,20 @@ function calcStayTotal(stay) {
 
 function calcDaycareBaseTotal(dc) {
   if (dc.manual_total != null && dc.manual_total !== '') return parseFloat(dc.manual_total) || 0;
+  if (dc.billing_type === 'hourly') {
+    const hourlyRate = parseFloat(dc.hourly_rate) || 0;
+    let hours = parseFloat(dc.num_hours) || 0;
+    if (!hours && dc.hora_ingreso && dc.hora_salida) {
+      const [ih, im] = dc.hora_ingreso.split(':').map(Number);
+      const [oh, om] = dc.hora_salida.split(':').map(Number);
+      hours = Math.max(0, (oh * 60 + om - ih * 60 - im) / 60);
+    }
+    const base = hourlyRate * hours;
+    const useHoliday = Array.isArray(dc.custom_holidays)
+      ? dc.custom_holidays.some(h => h.date === dc.date)
+      : !!isHoliday(dc.date);
+    return base + (useHoliday ? HOLIDAY_SURCHARGE : 0);
+  }
   const rate = parseFloat(dc.rate) || 0;
   const useHoliday = Array.isArray(dc.custom_holidays)
     ? dc.custom_holidays.some(h => h.date === dc.date)
@@ -3032,6 +3122,12 @@ function clearStayForm() {
   document.querySelectorAll('input[name="stay-manual"]')[0].checked = true;
   document.getElementById('stay-manual-section').style.display = 'none';
   document.getElementById('stay-manual-amount').value = '';
+  // reg-ct: show on new, hide on edit (editingStayId is set before clearStayForm is called)
+  const stayRegGroup = document.getElementById('stay-reg-ct-group');
+  if (stayRegGroup) {
+    stayRegGroup.style.display = editingStayId ? 'none' : '';
+    if (!editingStayId) { populateRegCtSelect('stay-reg-ct'); document.getElementById('stay-reg-ct').value = ''; }
+  }
 }
 
 // ===================== DOGS =====================
@@ -3181,16 +3277,17 @@ function openIncidentModal(id) {
   document.getElementById('incident-modal-title').textContent = id ? 'Editar incidencia' : 'Registrar incidencia';
   document.getElementById('incident-alerts').innerHTML = '';
   _incidentDogs = [];
+  populateRegCtSelect('inc-reg-ct');
   if (id) {
     const inc = DB.incidents.find(i => i.id === id);
     document.getElementById('inc-date').value = inc.date;
-    document.getElementById('inc-user').value = inc.registered_by || '';
+    document.getElementById('inc-reg-ct').value = inc.registered_by_ct_id || '';
     document.getElementById('inc-description').value = inc.description;
     document.getElementById('inc-notes').value = inc.notes || '';
     _incidentDogs = inc.dogs.map(d => ({...d}));
   } else {
     document.getElementById('inc-date').value = today();
-    document.getElementById('inc-user').value = '';
+    document.getElementById('inc-reg-ct').value = '';
     document.getElementById('inc-description').value = '';
     document.getElementById('inc-notes').value = '';
     _incidentDogs = [];
@@ -3236,12 +3333,16 @@ function saveIncident() {
   const date = document.getElementById('inc-date').value;
   const description = document.getElementById('inc-description').value.trim();
   const notes = document.getElementById('inc-notes').value.trim();
-  const registered_by = document.getElementById('inc-user').value.trim();
+  const regCtId = parseInt(document.getElementById('inc-reg-ct').value) || 0;
   const alertEl = document.getElementById('incident-alerts');
   alertEl.innerHTML = '';
 
   if (!date || !description) {
     alertEl.innerHTML = '<div class="alert alert-danger">Fecha y descripción son obligatorios.</div>';
+    return;
+  }
+  if (!regCtId) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
     return;
   }
   const validDogs = _incidentDogs.filter(d => d.dog_id);
@@ -3251,7 +3352,7 @@ function saveIncident() {
   }
 
   const incidents = DB.incidents;
-  const obj = { date, dogs: validDogs, description, notes, registered_by, created_at: today() };
+  const obj = { date, dogs: validDogs, description, notes, registered_by_ct_id: regCtId, created_at: today() };
   if (editingIncidentId) {
     const i = incidents.findIndex(x => x.id === editingIncidentId);
     incidents[i] = { ...incidents[i], ...obj };
@@ -4134,6 +4235,14 @@ function dogInputKeydown(e) {
   }
 }
 
+function populateRegCtSelect(elId) {
+  const sel = document.getElementById(elId);
+  if (!sel) return;
+  const all = DB.caretakers.filter(c => c.status === 'activa');
+  sel.innerHTML = '<option value="">— Seleccionar —</option>' +
+    all.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
 function populateCtSelect(elId, dateFrom, dateTo) {
   const sel = document.getElementById(elId);
   if (!sel) return;
@@ -4858,6 +4967,11 @@ function saveStay() {
   const manualVal = document.querySelector('input[name="stay-manual"]:checked')?.value;
   const manualAmt = manualVal === 'si' ? (parseFloat(document.getElementById('stay-manual-amount')?.value) ?? null) : null;
   const rateType = document.getElementById('stay-rate-type')?.value || 'daily';
+  const regCtId = editingStayId ? 0 : (parseInt(document.getElementById('stay-reg-ct').value) || 0);
+  if (!editingStayId && !regCtId) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
+    return;
+  }
   const obj = { dog_id: dogId, check_in_date: checkin, check_out_date: isOpenEnded ? '' : checkout, daily_rate: rate, rate_type: rateType, service_type: 'hospedaje', is_exchange: exchange, late_pickup: late, status: isOpenEnded ? 'activo' : status, notes, open_ended: isOpenEnded || false,
     ...(discountPct > 0 && manualAmt == null ? { discount_pct: discountPct } : {}),
     ...(manualAmt != null ? { manual_total: manualAmt } : {}),
@@ -4866,7 +4980,7 @@ function saveStay() {
     const i = stays.findIndex(s => s.id === editingStayId);
     stays[i] = { ...stays[i], ...obj };
   } else {
-    stays.push({ id: DB.nextId(stays), ...obj });
+    stays.push({ id: DB.nextId(stays), ...obj, registered_by_ct_id: regCtId });
   }
   DB.saveStays(stays);
 
@@ -5116,6 +5230,28 @@ function _resetDaycareDiscountUI() {
   if (dcManAmt) dcManAmt.value = '';
 }
 
+function toggleDcBillingType() {
+  const isHourly = document.getElementById('dc-billing-type').value === 'hourly';
+  document.getElementById('dc-rate-group').style.display = isHourly ? 'none' : '';
+  document.getElementById('dc-hourly-group').style.display = isHourly ? '' : 'none';
+  if (isHourly) updateDcHourlyPreview();
+}
+
+function updateDcHourlyPreview() {
+  const rate = parseFloat(document.getElementById('dc-hourly-rate').value) || 0;
+  const ingreso = document.getElementById('dc-hora-ingreso').value;
+  const salida = document.getElementById('dc-hora-salida').value;
+  const prev = document.getElementById('dc-hourly-preview');
+  if (!rate || !ingreso || !salida) { prev.style.display = 'none'; return; }
+  const [ih, im] = ingreso.split(':').map(Number);
+  const [oh, om] = salida.split(':').map(Number);
+  const hours = Math.max(0, (oh * 60 + om - ih * 60 - im) / 60);
+  if (hours <= 0) { prev.style.display = 'none'; return; }
+  const total = rate * hours;
+  prev.style.display = 'block';
+  prev.innerHTML = `${hours.toFixed(1)} h × ${fmtMoney(rate)}/h = <strong>${fmtMoney(total)}</strong>`;
+}
+
 function openDaycareModal() {
   document.getElementById('dc-dog').value = '';
   document.getElementById('dc-date').value = today();
@@ -5123,6 +5259,17 @@ function openDaycareModal() {
   document.getElementById('dc-notes').value = '';
   document.getElementById('dc-asgn-user').value = '';
   document.getElementById('daycare-alerts').innerHTML = '';
+  // Reset billing type
+  document.getElementById('dc-billing-type').value = 'daily';
+  document.getElementById('dc-hourly-rate').value = '';
+  document.getElementById('dc-hora-ingreso').value = '';
+  document.getElementById('dc-hora-salida').value = '';
+  document.getElementById('dc-hourly-preview').style.display = 'none';
+  toggleDcBillingType();
+  // reg-ct (new only)
+  document.getElementById('dc-reg-ct-group').style.display = '';
+  populateRegCtSelect('dc-reg-ct');
+  document.getElementById('dc-reg-ct').value = '';
   populateCtSelect('dc-caretaker', today(), today());
   const dcAdv = document.querySelectorAll('input[name="dc-advance"]');
   if (dcAdv.length) dcAdv[0].checked = true;
@@ -5197,10 +5344,23 @@ function openEditDaycare(id) {
   _editDaycareId = id;
   document.getElementById('dc-dog').value = dc.dog_id;
   document.getElementById('dc-date').value = dc.date;
-  document.getElementById('dc-rate').value = dc.rate;
   document.getElementById('dc-notes').value = dc.notes || '';
   document.getElementById('dc-asgn-user').value = '';
   document.getElementById('daycare-alerts').innerHTML = '';
+  // Hide reg-ct on edit
+  document.getElementById('dc-reg-ct-group').style.display = 'none';
+  // Load billing type
+  const isHourly = dc.billing_type === 'hourly';
+  document.getElementById('dc-billing-type').value = isHourly ? 'hourly' : 'daily';
+  if (isHourly) {
+    document.getElementById('dc-hourly-rate').value = dc.hourly_rate || '';
+    document.getElementById('dc-hora-ingreso').value = dc.hora_ingreso || '';
+    document.getElementById('dc-hora-salida').value = dc.hora_salida || '';
+    updateDcHourlyPreview();
+  } else {
+    document.getElementById('dc-rate').value = dc.rate;
+  }
+  toggleDcBillingType();
   populateCtSelect('dc-caretaker', dc.date, dc.date);
   const asgn = DB.assignments.find(a => a.ref_id === id && a.service_type === 'daycare');
   if (asgn) document.getElementById('dc-caretaker').value = asgn.caretaker_id;
@@ -5239,12 +5399,18 @@ function openEditDaycare(id) {
 function saveDaycare() {
   const dogId = parseInt(document.getElementById('dc-dog').value);
   const date = document.getElementById('dc-date').value;
-  const rate = parseFloat(document.getElementById('dc-rate').value);
+  const billingType = document.getElementById('dc-billing-type').value;
+  const isHourly = billingType === 'hourly';
+  const rate = isHourly ? null : parseFloat(document.getElementById('dc-rate').value);
+  const hourlyRate = isHourly ? parseFloat(document.getElementById('dc-hourly-rate').value) : null;
+  const horaIngreso = isHourly ? document.getElementById('dc-hora-ingreso').value : null;
+  const horaSalida = isHourly ? document.getElementById('dc-hora-salida').value : null;
   const notes = document.getElementById('dc-notes').value.trim();
   const alertEl = document.getElementById('daycare-alerts');
   alertEl.innerHTML = '';
 
-  if (!dogId || !date || !rate) {
+  const rateValid = isHourly ? !!hourlyRate : !!rate;
+  if (!dogId || !date || !rateValid) {
     alertEl.innerHTML = '<div class="alert alert-danger">Completa todos los campos obligatorios.</div>';
     return;
   }
@@ -5263,12 +5429,22 @@ function saveDaycare() {
   const dcManVal = document.querySelector('input[name="dc-manual"]:checked')?.value;
   const dcManAmt = dcManVal === 'si' ? (parseFloat(document.getElementById('dc-manual-amount')?.value) ?? null) : null;
 
+  const regCtId = _editDaycareId ? 0 : (parseInt(document.getElementById('dc-reg-ct').value) || 0);
+  if (!_editDaycareId && !regCtId) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
+    return;
+  }
+
+  const billingFields = isHourly
+    ? { billing_type: 'hourly', hourly_rate: hourlyRate, hora_ingreso: horaIngreso, hora_salida: horaSalida, rate: null }
+    : { billing_type: 'daily', rate };
+
   if (_editDaycareId) {
     // Edit existing
     const idx = dcs.findIndex(d => d.id === _editDaycareId);
     if (idx >= 0) {
       const old = dcs[idx];
-      dcs[idx] = { ...old, dog_id: dogId, date, rate, notes,
+      dcs[idx] = { ...old, dog_id: dogId, date, notes, ...billingFields,
         ...(dcDiscPct > 0 && dcManAmt == null ? { discount_pct: dcDiscPct } : {}),
         ...(dcManAmt != null ? { manual_total: dcManAmt } : {}),
         ...(dcCustomHols !== undefined ? { custom_holidays: dcCustomHols } : {}) };
@@ -5298,7 +5474,8 @@ function saveDaycare() {
     const newDcId = DB.nextId(dcs);
     const dcAdvanceVal = document.querySelector('input[name="dc-advance"]:checked')?.value;
     const dcAdvanceAmount = (dcAdvanceVal === 'si') ? (parseFloat(document.getElementById('dc-advance-amount')?.value) || 0) : 0;
-    dcs.push({ id: newDcId, dog_id: dogId, date, rate, notes, advance_paid: dcAdvanceAmount,
+    dcs.push({ id: newDcId, dog_id: dogId, date, notes, ...billingFields, advance_paid: dcAdvanceAmount,
+      registered_by_ct_id: regCtId,
       ...(dcDiscPct > 0 && dcManAmt == null ? { discount_pct: dcDiscPct } : {}),
       ...(dcManAmt != null ? { manual_total: dcManAmt } : {}),
       ...(dcCustomHols !== undefined ? { custom_holidays: dcCustomHols } : {}) });
@@ -6541,6 +6718,82 @@ function updateSalidasDot() {
   if (dot) dot.style.display = (pendingFixed.length || openEnded.length) ? 'inline-block' : 'none';
 }
 
+function openDaycarePickupModal(dcId) {
+  const dc = DB.daycares.find(d => d.id === dcId);
+  if (!dc) return;
+  const dog = DB.getDog(dc.dog_id);
+  const now = new Date();
+  const timeStr = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const ctList = DB.caretakers.filter(c => c.status === 'activa')
+    .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  // Update hora_salida in daycare record
+  const hourlyNote = dc.billing_type === 'hourly'
+    ? `<div style="background:var(--blue-50);border:1px solid var(--blue-200);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text-muted);margin-bottom:12px">Daycare por horas — se actualizará la hora de salida y se recalculará el total.</div>` : '';
+  const html = `<div style="padding:16px">
+    <div style="font-weight:600;margin-bottom:10px">Registrar salida daycare</div>
+    <div style="background:var(--gray-50);border:1px solid var(--border-md);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
+      <strong>${dog?.name || '?'} ${dog?.owner_last_name || ''}</strong> &nbsp;·&nbsp; ${fmtDate(dc.date)}
+    </div>
+    ${hourlyNote}
+    <div class="form-grid">
+      <div class="form-group"><label>Hora de salida *</label><input type="time" id="dc-pickup-time" class="form-control" value="${timeStr}" oninput="updateDcPickupPreview(${dcId})"></div>
+      <div class="form-group"><label>Cuidadora que registra *</label><select id="dc-pickup-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
+      <div class="form-group span2"><div id="dc-pickup-preview" style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:8px 12px;font-size:13px;display:none"></div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-dc-pickup')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveDaycarePickup(${dcId})">✓ Confirmar salida</button>
+    </div>
+  </div>`;
+  let overlay = document.getElementById('modal-dc-pickup');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-dc-pickup';
+    overlay.innerHTML = `<div class="modal" style="max-width:480px" id="modal-dc-pickup-inner"></div>`;
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('modal-dc-pickup-inner').innerHTML = html;
+  openModal('modal-dc-pickup');
+  updateDcPickupPreview(dcId);
+}
+
+function updateDcPickupPreview(dcId) {
+  const dc = DB.daycares.find(d => d.id === dcId);
+  if (!dc || dc.billing_type !== 'hourly') return;
+  const salida = document.getElementById('dc-pickup-time')?.value;
+  const prev = document.getElementById('dc-pickup-preview');
+  if (!prev) return;
+  if (!salida || !dc.hora_ingreso) { prev.style.display = 'none'; return; }
+  const [ih, im] = dc.hora_ingreso.split(':').map(Number);
+  const [oh, om] = salida.split(':').map(Number);
+  const hours = Math.max(0, (oh * 60 + om - ih * 60 - im) / 60);
+  const rate = parseFloat(dc.hourly_rate) || 0;
+  const total = rate * hours;
+  prev.style.display = 'block';
+  prev.innerHTML = `${hours.toFixed(1)} h × ${fmtMoney(rate)}/h = <strong>${fmtMoney(total)}</strong>`;
+}
+
+function saveDaycarePickup(dcId) {
+  const time = document.getElementById('dc-pickup-time')?.value;
+  const regCtId = parseInt(document.getElementById('dc-pickup-reg-ct')?.value) || 0;
+  if (!time) { alert('Ingresá la hora de salida.'); return; }
+  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
+  const dcs = DB.daycares;
+  const idx = dcs.findIndex(d => d.id === dcId);
+  if (idx < 0) return;
+  dcs[idx] = { ...dcs[idx], departure_time: time, registered_by_ct_id: regCtId };
+  // If hourly, recalculate final total based on actual hours
+  if (dcs[idx].billing_type === 'hourly' && dcs[idx].hora_ingreso) {
+    dcs[idx].hora_salida = time;
+    // Clear manual_total so calcDaycareBaseTotal recalculates from actual hours
+    delete dcs[idx].manual_total;
+  }
+  DB.saveDaycares(dcs);
+  closeModal('modal-dc-pickup');
+  renderSalidasPage();
+}
+
 function renderSalidasPending() {
   const t = today();
   const pending = DB.stays.filter(s =>
@@ -6550,10 +6803,13 @@ function renderSalidasPending() {
 
   const openEnded = getOpenEndedStays().sort((a, b) => a.check_in_date.localeCompare(b.check_in_date));
 
+  const todayDaycares = DB.daycares.filter(d => d.date === t && !d.departure_time)
+    .sort((a, b) => (a.hora_ingreso || '').localeCompare(b.hora_ingreso || ''));
+
   const el = document.getElementById('salidas-pending-wrap');
   let html = '';
 
-  if (!pending.length && !openEnded.length) {
+  if (!pending.length && !openEnded.length && !todayDaycares.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">✅</div><p>No hay perros pendientes de recojo.</p></div>`;
     return;
   }
@@ -6601,6 +6857,31 @@ function renderSalidasPending() {
     </div>`;
   }
 
+  if (todayDaycares.length) {
+    html += `<div class="section-title" style="margin-bottom:8px;color:var(--blue-800)">☀️ Daycare hoy — pendiente de salida</div>
+    <div class="card" style="padding:0;overflow:hidden;border:1px solid var(--blue-200);margin-bottom:20px">
+      <table>
+        <thead><tr><th>Perro</th><th>Dueño</th><th>Tipo</th><th>Ingreso</th><th>Total</th><th></th></tr></thead>
+        <tbody>${todayDaycares.map(d => {
+          const dog = DB.getDog(d.dog_id);
+          const isHourly = d.billing_type === 'hourly';
+          const typeChip = isHourly
+            ? `<span class="badge badge-teal">Por horas</span>`
+            : `<span class="badge badge-gray">Por día</span>`;
+          const ingresoCell = isHourly && d.hora_ingreso ? d.hora_ingreso : '—';
+          return `<tr>
+            <td><strong>${dog?.name || '?'}</strong></td>
+            <td class="text-sm">${dog?.owner_last_name || '—'}</td>
+            <td>${typeChip}</td>
+            <td class="text-sm">${ingresoCell}</td>
+            <td><strong>${fmtMoney(calcDaycareTotal(d))}</strong>${isHourly ? ' <span class="text-muted text-sm">(estimado)</span>' : ''}</td>
+            <td><button class="btn btn-primary btn-sm" onclick="openDaycarePickupModal(${d.id})">🚪 Registrar salida</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  }
+
   el.innerHTML = html;
 }
 
@@ -6609,9 +6890,16 @@ function openPickupModal(stayId) {
   const stay = DB.stays.find(s => s.id === stayId);
   const dog = DB.getDog(stay.dog_id);
   const isOpen = !!stay.open_ended;
-  // Show/hide date field for open-ended stays
-  document.getElementById('pickup-date-group').style.display = isOpen ? '' : 'none';
+  // Always show date field; for fixed stays show scheduled date as hint
   document.getElementById('pickup-date').value = isOpen ? today() : stay.check_out_date;
+  const scheduledInfo = document.getElementById('pickup-scheduled-info');
+  if (isOpen) {
+    document.getElementById('pickup-date-label').textContent = 'Fecha real de salida *';
+    scheduledInfo.textContent = '';
+  } else {
+    document.getElementById('pickup-date-label').textContent = 'Fecha real de salida *';
+    scheduledInfo.innerHTML = `Programada: <strong>${fmtDate(stay.check_out_date)}</strong> — modificar solo si el perro se fue en otra fecha`;
+  }
   const daysInfo = isOpen
     ? `Días acumulados: <strong>${dateDiff(stay.check_in_date, today())}</strong>`
     : `Salida prevista: <strong>${fmtDate(stay.check_out_date)}</strong> · Días: <strong>${dateDiff(stay.check_in_date, stay.check_out_date)}</strong>`;
@@ -6623,11 +6911,22 @@ function openPickupModal(stayId) {
   const now = new Date();
   document.getElementById('pickup-time').value =
     String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-  document.getElementById('pickup-user').value = '';
   document.getElementById('pickup-notes').value = '';
   document.querySelectorAll('input[name="pickup-late"]')[0].checked = true;
+  populateRegCtSelect('pickup-reg-ct');
   updatePickupPreview();
   openModal('modal-pickup');
+}
+
+function _calcPickupTotal(stay, exitDate, late) {
+  const fullDays = dateDiff(stay.check_in_date, exitDate);
+  const rate = parseFloat(stay.daily_rate) || parseFloat(stay.rate) || 0;
+  const hols = _stayEffectiveHolidays({ ...stay, check_out_date: exitDate, open_ended: false });
+  const holDays = hols.filter(h => h.date >= stay.check_in_date && h.date < exitDate).length;
+  const exitHol = hols.some(h => h.date === exitDate) ? HOLIDAY_SURCHARGE : 0;
+  const base = fullDays * rate + holDays * HOLIDAY_SURCHARGE + (late ? rate + exitHol : rate * 0.5);
+  const discPct = parseFloat(stay.discount_pct) || 0;
+  return { total: discPct > 0 ? base * (1 - discPct / 100) : base, fullDays, rate };
 }
 
 function updatePickupPreview() {
@@ -6637,33 +6936,27 @@ function updatePickupPreview() {
   if (!stay) return;
   const late = document.querySelector('input[name="pickup-late"]:checked')?.value === 'si';
   const isOpen = !!stay.open_ended;
-  let tempStay = { ...stay, late_pickup: late };
-  if (isOpen) {
-    const exitDate = document.getElementById('pickup-date').value || today();
-    // For open-ended: days up to day before exit = full rate; exit day = half or full
-    const fullDays = dateDiff(stay.check_in_date, exitDate);
-    const rate = parseFloat(stay.daily_rate) || parseFloat(stay.rate) || 0;
-    const hols = _stayEffectiveHolidays({ ...stay, check_out_date: exitDate, open_ended: false });
-    const holDays = hols.filter(h => h.date >= stay.check_in_date && h.date < exitDate).length;
-    const exitHol = hols.some(h => h.date === exitDate) ? HOLIDAY_SURCHARGE : 0;
-    const base = fullDays * rate + holDays * HOLIDAY_SURCHARGE + (late ? rate + exitHol : rate * 0.5);
-    const discPct = parseFloat(stay.discount_pct) || 0;
-    const total = discPct > 0 ? base * (1 - discPct / 100) : base;
-    tempStay = { ...tempStay, _previewTotal: total };
+  const exitDate = document.getElementById('pickup-date').value || today();
+  const prev = document.getElementById('pickup-total-preview');
+
+  if (isOpen || exitDate !== stay.check_out_date) {
+    // Recalculate with the given exit date
+    const { total, fullDays, rate } = _calcPickupTotal(stay, exitDate, late);
     const paid = getPaidAmount(stayId);
     const pend = total - paid;
-    const prev = document.getElementById('pickup-total-preview');
     prev.style.display = 'block';
+    const dateNote = !isOpen && exitDate !== stay.check_out_date
+      ? ` <span class="badge badge-amber">fecha modificada</span>` : '';
     prev.innerHTML =
-      `Total final: <strong>${fmtMoney(total)}</strong> (${fullDays} días × ${fmtMoney(rate)} + ${late ? 'tarifa completa' : 'media tarifa'} día salida)` +
+      `Total final: <strong>${fmtMoney(total)}</strong>${dateNote} (${fullDays} días × ${fmtMoney(rate)} + ${late ? 'tarifa completa' : 'media tarifa'} día salida)` +
       ` &nbsp;·&nbsp; Pagado: <strong style="color:var(--green-800)">${fmtMoney(paid)}</strong>` +
       ` &nbsp;·&nbsp; Pendiente: <strong style="color:${pend > 0 ? 'var(--red-800)' : 'var(--green-800)'}">${fmtMoney(pend)}</strong>`;
     return;
   }
-  const total = calcStayTotal(tempStay);
+  // Fixed stay, date unchanged — original total
+  const total = calcStayTotal({ ...stay, late_pickup: late });
   const paid  = getPaidAmount(stayId);
   const pend  = total - paid;
-  const prev  = document.getElementById('pickup-total-preview');
   prev.style.display = 'block';
   prev.innerHTML =
     `Total estadía: <strong>${fmtMoney(total)}</strong>` +
@@ -6678,29 +6971,22 @@ function savePickup() {
   if (!time) { alert('Ingresa la hora de recojo.'); return; }
   const late  = document.querySelector('input[name="pickup-late"]:checked')?.value === 'si';
   const notes = document.getElementById('pickup-notes').value.trim();
-  const user  = document.getElementById('pickup-user').value.trim();
+  const regCtId = parseInt(document.getElementById('pickup-reg-ct').value) || 0;
+  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
   const now   = new Date().toISOString();
+  const exitDate = document.getElementById('pickup-date').value;
+  if (!exitDate) { alert('Ingresa la fecha real de salida.'); return; }
 
   const stays = DB.stays;
   const idx = stays.findIndex(s => s.id === stayId);
   if (idx < 0) return;
   const stay = stays[idx];
   const isOpen = !!stay.open_ended;
+  const dateChanged = !isOpen && exitDate !== stay.check_out_date;
 
   let extra = {};
-  if (isOpen) {
-    const exitDate = document.getElementById('pickup-date').value;
-    if (!exitDate) { alert('Ingresa la fecha real de salida.'); return; }
-    // Recalculate final total and close the stay
-    const fullDays = dateDiff(stay.check_in_date, exitDate);
-    const rate = parseFloat(stay.daily_rate) || parseFloat(stay.rate) || 0;
-    const closedStay = { ...stay, check_out_date: exitDate, open_ended: false };
-    const hols = _stayEffectiveHolidays({ ...closedStay });
-    const holDays = hols.filter(h => h.date >= stay.check_in_date && h.date < exitDate).length;
-    const exitHol = hols.some(h => h.date === exitDate) ? HOLIDAY_SURCHARGE : 0;
-    const base = fullDays * rate + holDays * HOLIDAY_SURCHARGE + (late ? rate + exitHol : rate * 0.5);
-    const discPct = parseFloat(stay.discount_pct) || 0;
-    const finalTotal = discPct > 0 ? base * (1 - discPct / 100) : base;
+  if (isOpen || dateChanged) {
+    const { total: finalTotal } = _calcPickupTotal(stay, exitDate, late);
     extra = { check_out_date: exitDate, open_ended: false, status: 'finalizado', manual_total: finalTotal };
   }
 
@@ -6710,7 +6996,7 @@ function savePickup() {
     late_pickup: late,
     pickup_time: time,
     pickup_notes: notes,
-    pickup_user: user,
+    registered_by_ct_id: regCtId,
     pickup_registered_at: now
   };
   DB.saveStays(stays);
@@ -8134,6 +8420,97 @@ function switchCaretakerTab(tab, btn) {
   document.getElementById('ct-tab-' + tab).classList.add('active');
   if (tab === 'resumen') renderCaretakersSummary();
   if (tab === 'vacaciones') renderCaretakersVacations();
+  if (tab === 'registros') {
+    // Populate cuidadora filter
+    const ctSel = document.getElementById('reg-filter-ct');
+    if (ctSel) {
+      const cts = DB.caretakers;
+      ctSel.innerHTML = '<option value="all">Todas las cuidadoras</option>' +
+        cts.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    }
+    renderRegistrosStats();
+  }
+}
+
+function toggleRegCustomRange() {
+  const val = document.getElementById('reg-filter-period').value;
+  const span = document.getElementById('reg-custom-range');
+  if (span) span.style.display = val === 'custom' ? 'flex' : 'none';
+}
+
+function renderRegistrosStats() {
+  const period = document.getElementById('reg-filter-period').value;
+  const typeFilter = document.getElementById('reg-filter-type').value;
+  const ctFilter = document.getElementById('reg-filter-ct').value;
+  const t = today();
+
+  let from = null, to = null;
+  if (period === 'today') { from = t; to = t; }
+  else if (period === 'week') {
+    const d = new Date(); const day = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+    from = mon.toISOString().slice(0,10); to = t;
+  } else if (period === 'month') { from = t.slice(0,7) + '-01'; to = t; }
+  else if (period === 'custom') {
+    from = document.getElementById('reg-from').value || null;
+    to = document.getElementById('reg-to').value || null;
+  }
+
+  const inRange = (date) => (!from || date >= from) && (!to || date <= to);
+
+  // Gather all records with registered_by_ct_id
+  const allRecords = [];
+  if (typeFilter === 'all' || typeFilter === 'hospedaje')
+    DB.stays.forEach(s => { if (s.registered_by_ct_id && inRange(s.check_in_date)) allRecords.push({ type: 'hospedaje', ct_id: s.registered_by_ct_id, date: s.check_in_date }); });
+  if (typeFilter === 'all' || typeFilter === 'daycare')
+    DB.daycares.forEach(d => { if (d.registered_by_ct_id && inRange(d.date)) allRecords.push({ type: 'daycare', ct_id: d.registered_by_ct_id, date: d.date }); });
+  if (typeFilter === 'all' || typeFilter === 'restaurante')
+    DB.restaurant.forEach(r => { if (r.registered_by_ct_id && inRange(r.date)) allRecords.push({ type: 'restaurante', ct_id: r.registered_by_ct_id, date: r.date }); });
+  if (typeFilter === 'all' || typeFilter === 'reserva')
+    DB.reservas.forEach(r => { if (r.registered_by_ct_id && inRange(r.created_at?.slice(0,10) || t)) allRecords.push({ type: 'reserva', ct_id: r.registered_by_ct_id, date: r.created_at?.slice(0,10) || t }); });
+  if (typeFilter === 'all' || typeFilter === 'incidencia')
+    DB.incidents.forEach(i => { if (i.registered_by_ct_id && inRange(i.date)) allRecords.push({ type: 'incidencia', ct_id: i.registered_by_ct_id, date: i.date }); });
+  if (typeFilter === 'all' || typeFilter === 'recojo')
+    DB.stays.forEach(s => { if (s.registered_by_ct_id && s.pickup_time && inRange(s.check_out_date || t)) allRecords.push({ type: 'recojo', ct_id: s.registered_by_ct_id, date: s.check_out_date || t }); });
+
+  const filtered = ctFilter === 'all' ? allRecords : allRecords.filter(r => r.ct_id == ctFilter);
+  const total = filtered.length;
+
+  const byType = { hospedaje:0, daycare:0, restaurante:0, reserva:0, incidencia:0, recojo:0 };
+  const byCt = {};
+  filtered.forEach(r => {
+    byType[r.type] = (byType[r.type] || 0) + 1;
+    if (!byCt[r.ct_id]) byCt[r.ct_id] = { total: 0, ...Object.fromEntries(Object.keys(byType).map(k => [k, 0])) };
+    byCt[r.ct_id].total++;
+    byCt[r.ct_id][r.type]++;
+  });
+
+  const el = document.getElementById('ct-registros-wrap');
+  if (!total) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>No hay registros para el período seleccionado.</p></div>'; return; }
+
+  const typeLabels = { hospedaje:'Hospedaje', daycare:'Daycare', restaurante:'Restaurante', reserva:'Reserva', incidencia:'Incidencia', recojo:'Recojo' };
+  const rows = Object.entries(byCt).sort((a,b) => b[1].total - a[1].total).map(([ctId, data]) => {
+    const ct = DB.caretakers.find(c => c.id == ctId);
+    const pct = total > 0 ? ((data.total / total) * 100).toFixed(0) : 0;
+    const breakdown = Object.entries(typeLabels).map(([k, lbl]) => data[k] ? `<span class="chip">${lbl}: ${data[k]}</span>` : '').filter(Boolean).join(' ');
+    return `<tr>
+      <td><strong>${ct?.name || '(id:'+ctId+')'}</strong></td>
+      <td><strong>${data.total}</strong></td>
+      <td><div style="display:flex;align-items:center;gap:8px"><div style="background:var(--green-600);height:8px;border-radius:4px;width:${pct}%;min-width:4px;max-width:120px"></div>${pct}%</div></td>
+      <td style="font-size:12px">${breakdown || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="card" style="padding:12px 16px;margin-bottom:12px">
+      <strong>Total registros: ${total}</strong> &nbsp;|&nbsp; ${Object.entries(typeLabels).map(([k,lbl]) => byType[k] ? `${lbl}: <strong>${byType[k]}</strong>` : '').filter(Boolean).join(' &nbsp;·&nbsp; ')}
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table>
+        <thead><tr><th>Cuidadora</th><th>Registros</th><th>% del total</th><th>Desglose</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 function switchFeedingTab(tab, btn) {
   document.querySelectorAll('#fd-tabs .tab-btn').forEach(b => b.classList.remove('active'));
@@ -8791,7 +9168,9 @@ function openRestaurantModal(id) {
   editingRestId = id || null;
   document.getElementById('rest-modal-title').textContent = id ? 'Editar consumo' : 'Registrar consumo';
   document.getElementById('rest-alerts').innerHTML = '';
+  const regGroup = document.getElementById('rest-reg-ct-group');
   if (id) {
+    if (regGroup) regGroup.style.display = 'none';
     const r = DB.restaurant.find(x => x.id === id);
     if (!r) return;
     document.getElementById('rest-dog-input').value = DB.getDog(r.dog_id)?.name || '';
@@ -8802,6 +9181,9 @@ function openRestaurantModal(id) {
     document.getElementById('rest-notes').value = r.notes || '';
     updateRestTotal();
   } else {
+    if (regGroup) regGroup.style.display = '';
+    populateRegCtSelect('rest-reg-ct');
+    document.getElementById('rest-reg-ct').value = '';
     document.getElementById('rest-dog-input').value = '';
     document.getElementById('rest-dog').value = '';
     document.getElementById('rest-date').value = today();
@@ -8826,10 +9208,15 @@ function saveRestaurant() {
   const meals = parseInt(document.getElementById('rest-meals').value);
   const cost  = parseFloat(document.getElementById('rest-cost').value);
   const notes = document.getElementById('rest-notes').value.trim();
+  const regCtId = parseInt(document.getElementById('rest-reg-ct').value) || 0;
   const alertEl = document.getElementById('rest-alerts');
   alertEl.innerHTML = '';
   if (!dogId || !date || !meals || !cost) {
     alertEl.innerHTML = '<div class="alert alert-danger">Completa todos los campos obligatorios.</div>';
+    return;
+  }
+  if (!editingRestId && !regCtId) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
     return;
   }
   const total = meals * cost;
@@ -8838,7 +9225,7 @@ function saveRestaurant() {
     const i = recs.findIndex(x => x.id === editingRestId);
     recs[i] = { ...recs[i], dog_id: dogId, date, meals, cost_per_meal: cost, total, notes };
   } else {
-    recs.push({ id: DB.nextId(recs), dog_id: dogId, date, meals, cost_per_meal: cost, total, notes, paid: false, paid_date: null, created_at: today() });
+    recs.push({ id: DB.nextId(recs), dog_id: dogId, date, meals, cost_per_meal: cost, total, notes, registered_by_ct_id: regCtId, paid: false, paid_date: null, created_at: today() });
   }
   DB.saveRestaurant(recs);
   closeModal('modal-restaurant');
@@ -10563,6 +10950,12 @@ function openReservaModal(id) {
       }
     }
   }
+  // reg-ct: show on new, hide on edit
+  const resRegGroup = document.getElementById('res-reg-ct-group');
+  if (resRegGroup) {
+    resRegGroup.style.display = id ? 'none' : '';
+    if (!id) { populateRegCtSelect('res-reg-ct'); document.getElementById('res-reg-ct').value = ''; }
+  }
   document.getElementById('res-modal-title').textContent = id ? 'Ver / editar reserva' : 'Nueva reserva';
   openModal('modal-reserva');
   if (window.innerWidth <= 768) {
@@ -10989,6 +11382,11 @@ function saveReserva() {
       manual_total: dcManual || undefined,
       dc_holiday: dcHoliday, status };
   }
+  const regCtId = parseInt(document.getElementById('res-reg-ct').value) || 0;
+  if (!_editingReservaId && !regCtId) {
+    alerts.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
+    return;
+  }
   const arr = DB.reservas;
   if (_editingReservaId) {
     const idx = arr.findIndex(x => x.id === _editingReservaId);
@@ -10996,6 +11394,7 @@ function saveReserva() {
   } else {
     obj.id = DB.nextId(arr);
     obj.created_at = new Date().toISOString();
+    obj.registered_by_ct_id = regCtId;
     arr.push(obj);
   }
   DB.saveReservas(arr);
@@ -11559,6 +11958,12 @@ function deleteIntegration(id) {
         </div>
         <div id="res-dc-holiday-alert" style="margin-bottom:12px"></div>
       </div>
+      <div class="form-group" id="res-reg-ct-group" style="margin-top:8px">
+        <label>Cuidadora que registra *</label>
+        <select id="res-reg-ct">
+          <option value="">— Seleccionar —</option>
+        </select>
+      </div>
     </div><!-- /res-step-3 -->
 
     <!-- Wizard footer (mobile only) -->
@@ -11749,6 +12154,12 @@ function deleteIntegration(id) {
       <div class="form-group span2">
         <label>Observaciones</label>
         <textarea id="rest-notes" rows="2"></textarea>
+      </div>
+      <div class="form-group span2" id="rest-reg-ct-group">
+        <label>Cuidadora que registra *</label>
+        <select id="rest-reg-ct">
+          <option value="">— Seleccionar —</option>
+        </select>
       </div>
     </div>
     <div class="modal-footer">
