@@ -9746,8 +9746,8 @@ BLOQUE C — FINANZAS DEL PERÍODO
 BLOQUE D — ANÁLISIS DEL PERÍODO
  17. Resumen completo — ocupación, machos/hembras, tamaños, comportamientos con % y consolidados, Top 10 clientes con desglose de pagos
 
-BLOQUE E — AUDITORÍA DE REGISTROS (global, sin filtro de período)
- 18. Actividad por cuidadora — quién registró qué, cantidad y % por tipo de registro (hospedaje, recojo, daycare, pago, incidencia, conflicto, integración, turno alimentación, turno teléfono, asignación, nuevo perro, restaurante, reserva, medicamento)</div>`;
+BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
+ 18. Actividad por cuidadora — todos los tipos de información registrada en el período (hospedaje, recojo, daycare, pago, incidencia, conflicto, integración, turno alimentación, turno teléfono, asignación, nuevo perro, restaurante, reserva, medicamento) con cantidad y % por cuidadora y por tipo</div>`;
 
   // ══════════════════════════════════════════════════════════════════
   // BLOQUE A — CATÁLOGO COMPLETO (sin filtro de período)
@@ -10409,12 +10409,12 @@ BLOQUE E — AUDITORÍA DE REGISTROS (global, sin filtro de período)
   // ══════════════════════════════════════════════════════════════════
   // BLOQUE E — REGISTRO DE ACTIVIDAD POR CUIDADORA
   // ══════════════════════════════════════════════════════════════════
-  html += blk('BLOQUE E — QUIÉN REGISTRÓ QUÉ (global, sin filtro de período)');
-  html += sec('18. ACTIVIDAD DE REGISTRO POR CUIDADORA — TODOS LOS TIEMPOS');
-  html += `<p style="font-size:11px">Todos los registros del sistema con cuidadora que registra asignada, agrupados por cuidadora. Sirve para auditoría y métricas de actividad.</p>`;
+  html += blk('BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO (' + from + ' → ' + to + ')');
+  html += sec('18. ACTIVIDAD DE REGISTRO POR CUIDADORA — PERÍODO SELECCIONADO');
+  html += `<p style="font-size:11px">Registros con cuidadora asignada cuya fecha cae dentro del período ${from} → ${to}, agrupados por cuidadora. Todos los tipos de información registrada en el sistema.</p>`;
 
   const _allRegRecords = [];
-  const _pushReg = (type, ct_id, date, detail) => { if (ct_id) _allRegRecords.push({ type, ct_id, date, detail }); };
+  const _pushReg = (type, ct_id, date, detail) => { if (ct_id && inRange(date)) _allRegRecords.push({ type, ct_id, date, detail }); };
 
   DB.stays.forEach(s => { _pushReg('Hospedaje ingreso', s.registered_by_ct_id, s.check_in_date, `${DB.getDog(s.dog_id)?.name||'?'} (${s.check_in_date} → ${s.check_out_date||'abierto'})`); });
   DB.stays.filter(s=>s.pickup_time).forEach(s => { _pushReg('Recojo/salida', s.registered_by_ct_id, s.check_out_date, `${DB.getDog(s.dog_id)?.name||'?'} salida ${s.check_out_date}`); });
