@@ -10413,10 +10413,12 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
   html += sec('18. ACTIVIDAD DE REGISTRO POR CUIDADORA — PERÍODO SELECCIONADO');
   html += `<p style="font-size:11px">Registros con cuidadora asignada cuya fecha cae dentro del período ${from} → ${to}, agrupados por cuidadora. Todos los tipos de información registrada en el sistema.</p>`;
 
+  const _SIN_CT = '__sin_ct__';
   const _allRegRecords = [];
-  const _pushReg = (type, ct_id, date, detail) => { if (ct_id && inRange(date)) _allRegRecords.push({ type, ct_id, date, detail }); };
+  // Cuenta TODOS los registros del período; usa _SIN_CT para los que no tienen cuidadora asignada
+  const _pushReg = (type, ct_id, date, detail) => { if (inRange(date)) _allRegRecords.push({ type, ct_id: ct_id || _SIN_CT, date, detail, hasCt: !!ct_id }); };
 
-  DB.stays.forEach(s => { _pushReg('Hospedaje ingreso', s.registered_by_ct_id, s.check_in_date, `${DB.getDog(s.dog_id)?.name||'?'} (${s.check_in_date} → ${s.check_out_date||'abierto'})`); });
+  DB.stays.filter(s=>s.status!=='cancelado').forEach(s => { _pushReg('Hospedaje ingreso', s.registered_by_ct_id, s.check_in_date, `${DB.getDog(s.dog_id)?.name||'?'} (${s.check_in_date} → ${s.check_out_date||'abierto'})`); });
   DB.stays.filter(s=>s.pickup_time).forEach(s => { _pushReg('Recojo/salida', s.registered_by_ct_id, s.check_out_date, `${DB.getDog(s.dog_id)?.name||'?'} salida ${s.check_out_date}`); });
   DB.daycares.forEach(d => { _pushReg('Daycare ingreso', d.registered_by_ct_id, d.date, `${DB.getDog(d.dog_id)?.name||'?'} (${d.date})`); });
   DB.payments.forEach(p => { const s=DB.stays.find(x=>x.id===p.stay_id); _pushReg('Pago/cobro', p.registered_by_ct_id, p.date, `S/ ${p.amount} — ${DB.getDog(s?.dog_id)?.name||'?'}`); });
@@ -10432,7 +10434,9 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
   DB_medLogs.all.forEach(m => { _pushReg('Medicamento', m.registered_by_ct_id, m.date, `${DB.getDog(m.dogId)?.name||'?'} — ${m.medName}`); });
 
   const _totalReg = _allRegRecords.length;
-  html += `<p style="font-size:11px">Total registros con cuidadora asignada: <strong>${_totalReg}</strong></p>`;
+  const _totalConCt = _allRegRecords.filter(r=>r.hasCt).length;
+  const _totalSinCt = _totalReg - _totalConCt;
+  html += `<p style="font-size:11px">Total registros en el período: <strong>${_totalReg}</strong> — Con cuidadora asignada: <strong>${_totalConCt}</strong> (${_totalReg>0?(_totalConCt/_totalReg*100).toFixed(1):0}%) — Sin cuidadora asignada (registros anteriores al campo): <strong>${_totalSinCt}</strong></p>`;
 
   // Group by caretaker
   const _byCt = {};
@@ -10448,9 +10452,10 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
   html += tbl(
     ['Cuidadora', 'Total', '% del total', ..._regTypes],
     _ctEntries.map(([ctId, data]) => {
-      const ct = cts.find(c => c.id == ctId);
+      const ct = ctId === _SIN_CT ? null : cts.find(c => c.id == ctId);
+      const label = ctId === _SIN_CT ? '⚠ Sin cuidadora asignada (datos anteriores)' : (ct?.name || `ID ${ctId}`);
       const pct = _totalReg > 0 ? (data.total/_totalReg*100).toFixed(1)+'%' : '0%';
-      return [ct?.name||`ID ${ctId}`, data.total, pct, ..._regTypes.map(t => data.byType[t]||0)];
+      return [label, data.total, pct, ..._regTypes.map(t => data.byType[t]||0)];
     }),
     _totalReg > 0 ? ['TOTAL', _totalReg, '100%', ..._regTypes.map(t => _allRegRecords.filter(r=>r.type===t).length)] : null
   );
