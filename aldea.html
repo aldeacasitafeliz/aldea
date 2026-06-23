@@ -11432,15 +11432,36 @@ function _reservaAdvanceTotal(r) {
 
 function setReservaStatus(id, newStatus) {
   if (newStatus === 'activa') { activateReserva(id); return; }
-  const label = newStatus === 'pendiente' ? 'pendiente' : 'caída';
-  if (!confirm(`¿Cambiar esta reserva a ${label}?`)) return;
   const arr = DB.reservas;
   const r = arr.find(x => x.id === id);
   if (!r) return;
+  const label = newStatus === 'pendiente' ? 'pendiente' : 'caída';
+  const wasActive = r.status === 'activa';
+  const linkedStayId = r.activated_stay_id;
+  const linkedDcId = r.activated_dc_id;
+  let confirmMsg = `¿Cambiar esta reserva a ${label}?`;
+  if (wasActive && (linkedStayId || linkedDcId)) {
+    confirmMsg += `\n\nEsto eliminará el ${r.type === 'hospedaje' ? 'hospedaje' : 'daycare'} creado al activarla (y sus pagos asociados).`;
+  }
+  if (!confirm(confirmMsg)) return;
+  // Remove linked stay/daycare and its payments
+  if (wasActive && linkedStayId) {
+    DB.saveStays(DB.stays.filter(s => s.id !== linkedStayId));
+    DB.savePayments(DB.payments.filter(p => p.stay_id !== linkedStayId));
+    delete r.activated_stay_id;
+  }
+  if (wasActive && linkedDcId) {
+    DB.saveDaycares(DB.daycares.filter(d => d.id !== linkedDcId));
+    DB.savePayments(DB.payments.filter(p => p.stay_id !== linkedDcId));
+    delete r.activated_dc_id;
+  }
   r.status = newStatus;
   if (newStatus === 'caida') r.fallen_at = new Date().toISOString();
   DB.saveReservas(arr);
   renderReservasPage();
+  if (wasActive && (linkedStayId || linkedDcId)) {
+    if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
+  }
 }
 
 function activateReserva(id) {
@@ -11468,9 +11489,13 @@ function activateReserva(id) {
       DB.savePayments(pmts);
     }
     DB.saveStays(stays);
+    // Store link so deactivation can remove the stay
+    const arr2 = DB.reservas;
+    const res2 = arr2.find(x => x.id === id);
+    res2.activated_stay_id = newStay.id;
+    DB.saveReservas(arr2);
   } else {
     const dcs = DB.daycares;
-    // Translate dc_holiday boolean → custom_holidays array for calcDaycareBaseTotal
     const dcHols = r.dc_holiday ? getHolidaysInRange(r.date, r.date) : [];
     const newDc = { id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
       notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
@@ -11487,6 +11512,10 @@ function activateReserva(id) {
       DB.savePayments(pmts);
     }
     DB.saveDaycares(dcs);
+    const arr2 = DB.reservas;
+    const res2 = arr2.find(x => x.id === id);
+    res2.activated_dc_id = newDc.id;
+    DB.saveReservas(arr2);
   }
   const arr = DB.reservas;
   const res = arr.find(x => x.id === id);
