@@ -10826,7 +10826,9 @@ function renderReservasPage() {
       <td>${rateLabel}</td>
       <td>${r.status==='pendiente'?'<span class="badge badge-amber">Pendiente</span>':r.status==='activa'?'<span class="badge badge-green">Activada</span>':'<span class="badge badge-gray">Caída</span>'}</td>
       <td style="white-space:nowrap">
-        ${r.status==='pendiente'?`<button class="btn btn-primary btn-sm" onclick="activateReserva(${r.id})">Activar</button> <button class="btn btn-secondary btn-sm" onclick="dropReserva(${r.id})">Caída</button> `:''}
+        ${r.status!=='pendiente'?`<button class="btn btn-secondary btn-sm" onclick="setReservaStatus(${r.id},'pendiente')">→ Pendiente</button> `:''}
+        ${r.status!=='activa'?`<button class="btn btn-primary btn-sm" onclick="setReservaStatus(${r.id},'activa')">→ Activar</button> `:''}
+        ${r.status!=='caida'?`<button class="btn btn-secondary btn-sm" onclick="setReservaStatus(${r.id},'caida')">→ Caída</button> `:''}
         <button class="btn btn-secondary btn-sm" onclick="openReservaModal(${r.id})">Ver</button>
         <button class="btn btn-danger btn-sm" onclick="deleteReserva(${r.id})">✕</button>
       </td>
@@ -11426,6 +11428,19 @@ function calcReservaTotal(r) {
 function _reservaAdvanceTotal(r) {
   if (r.advance_payments?.length) return r.advance_payments.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
   return parseFloat(r.advance_amount) || 0;
+}
+
+function setReservaStatus(id, newStatus) {
+  if (newStatus === 'activa') { activateReserva(id); return; }
+  const label = newStatus === 'pendiente' ? 'pendiente' : 'caída';
+  if (!confirm(`¿Cambiar esta reserva a ${label}?`)) return;
+  const arr = DB.reservas;
+  const r = arr.find(x => x.id === id);
+  if (!r) return;
+  r.status = newStatus;
+  if (newStatus === 'caida') r.fallen_at = new Date().toISOString();
+  DB.saveReservas(arr);
+  renderReservasPage();
 }
 
 function activateReserva(id) {
