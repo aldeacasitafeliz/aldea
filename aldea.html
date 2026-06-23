@@ -6481,12 +6481,12 @@ function renderIncome() {
     <div class="stat-card coral">
       <div class="stat-label">Pendiente efectivo</div>
       <div class="stat-value">${fmtMoney(totalPendienteEfectivo)}</div>
-      <div class="stat-sub" style="color:var(--red-800);font-style:italic">(sin incluir reservas)</div>
+      <div class="stat-sub" style="color:var(--red-800);font-style:italic">hospedaje activo + restaurante</div>
     </div>
     <div class="stat-card" style="background:var(--blue-50);border-color:var(--blue-200)">
       <div class="stat-label" style="color:var(--blue-800)">Pendiente potencial</div>
       <div class="stat-value" style="color:var(--blue-900)">${fmtMoney(totalPendientePotencial)}</div>
-      <div class="stat-sub" style="color:var(--blue-700);font-style:italic">(incluyendo reservas)</div>
+      <div class="stat-sub" style="color:var(--blue-700);font-style:italic">solo reservas pendientes</div>
     </div>
     <div class="stat-card green">
       <div class="stat-label">Cobrado en el período</div>
@@ -6501,12 +6501,12 @@ function renderIncome() {
     <div class="stat-card teal">
       <div class="stat-label">Proyectado efectivo</div>
       <div class="stat-value">${fmtMoney(totalProyectadoEfectivo)}</div>
-      <div class="stat-sub" style="font-style:italic">(sin incluir reservas)</div>
+      <div class="stat-sub" style="font-style:italic">cobrado + pendiente efectivo</div>
     </div>
     <div class="stat-card" style="background:#f5f0ff;border-color:#c4b5fd">
       <div class="stat-label" style="color:#5b21b6">Proyectado potencial</div>
       <div class="stat-value" style="color:#4c1d95">${fmtMoney(totalProyectadoPotencial)}</div>
-      <div class="stat-sub" style="color:#6d28d9;font-style:italic">(incluyendo reservas)</div>
+      <div class="stat-sub" style="color:#6d28d9;font-style:italic">efectivo + reservas pendientes</div>
     </div>
   `;
 
