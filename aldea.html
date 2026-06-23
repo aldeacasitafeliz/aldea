@@ -5996,21 +5996,51 @@ function renderIncome() {
                         + totalResProyectado;
   const totalPagado = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
 
-  // Pendiente de cobro es GLOBAL — todos los que deben plata hoy, sin importar el período
+  // Pendiente efectivo = hospedajes + restaurante (SIN reservas)
   const allStaysGlobal = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allRestGlobal  = DB.restaurant;
   const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente');
-  const totalPendiente = allStaysGlobal.reduce((s,x) => s + getPendingAmount(x), 0)
-                       + allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0)
-                       + allPendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
+  const totalPendienteEfectivo = allStaysGlobal.reduce((s,x) => s + getPendingAmount(x), 0)
+                               + allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0);
+  // Pendiente potencial = reservas pendientes no activadas
+  const totalPendientePotencial = allPendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
+  // Proyectados
+  const totalProyectadoEfectivo  = totalPagado + totalPendienteEfectivo;
+  const totalProyectadoPotencial = totalProyectadoEfectivo + totalPendientePotencial;
   const deudores = allStaysGlobal.filter(s => getPendingAmount(s) > 0).length
                  + new Set(allRestGlobal.filter(r => !r.paid).map(r => r.dog_id)).size;
 
   document.getElementById('income-stats').innerHTML = `
-    <div class="stat-card coral"><div class="stat-label">Pendiente de cobro</div><div class="stat-value">${fmtMoney(totalPendiente)}</div><div class="stat-sub">${deudores} estadía(s)${pendingRes.length ? ` + ${pendingRes.length} reserva(s)` : ''}</div></div>
-    <div class="stat-card green"><div class="stat-label">Cobrado en el período</div><div class="stat-value">${fmtMoney(totalPagado)}</div><div class="stat-sub">pagos${totalResAdv > 0 ? ` · ${fmtMoney(totalResAdv)} adelantos reservas` : ''}</div></div>
-    <div class="stat-card teal"><div class="stat-label">Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalPagado + totalPendiente)}</div><div class="stat-sub">cobrado + pendiente</div></div>
-    <div class="stat-card amber"><div class="stat-label">Con deuda</div><div class="stat-value">${deudores}</div><div class="stat-sub">perro(s)</div></div>
+    <div class="stat-card coral">
+      <div class="stat-label">Pendiente efectivo</div>
+      <div class="stat-value">${fmtMoney(totalPendienteEfectivo)}</div>
+      <div class="stat-sub" style="color:var(--red-800);font-style:italic">(sin incluir reservas)</div>
+    </div>
+    <div class="stat-card" style="background:var(--blue-50);border-color:var(--blue-200)">
+      <div class="stat-label" style="color:var(--blue-800)">Pendiente potencial</div>
+      <div class="stat-value" style="color:var(--blue-900)">${fmtMoney(totalPendientePotencial)}</div>
+      <div class="stat-sub" style="color:var(--blue-700);font-style:italic">(incluyendo reservas)</div>
+    </div>
+    <div class="stat-card green">
+      <div class="stat-label">Cobrado en el período</div>
+      <div class="stat-value">${fmtMoney(totalPagado)}</div>
+      <div class="stat-sub">pagos${totalResAdv > 0 ? ` · ${fmtMoney(totalResAdv)} adelantos reservas` : ''}</div>
+    </div>
+    <div class="stat-card amber">
+      <div class="stat-label">Con deuda</div>
+      <div class="stat-value">${deudores}</div>
+      <div class="stat-sub">perro(s)</div>
+    </div>
+    <div class="stat-card teal">
+      <div class="stat-label">Proyectado efectivo</div>
+      <div class="stat-value">${fmtMoney(totalProyectadoEfectivo)}</div>
+      <div class="stat-sub" style="font-style:italic">(sin incluir reservas)</div>
+    </div>
+    <div class="stat-card" style="background:#f5f0ff;border-color:#c4b5fd">
+      <div class="stat-label" style="color:#5b21b6">Proyectado potencial</div>
+      <div class="stat-value" style="color:#4c1d95">${fmtMoney(totalProyectadoPotencial)}</div>
+      <div class="stat-sub" style="color:#6d28d9;font-style:italic">(incluyendo reservas)</div>
+    </div>
   `;
 
   // TAB: PENDIENTE
@@ -6097,7 +6127,8 @@ function renderIncome() {
       </div>`);
   });
 
-  pendResArr.forEach(r => {
+  // reservas se renderizan en sección potencial separada — bloque eliminado
+  if (false) pendResArr.forEach(r => {
     const dog = DB.getDog(r.dog_id);
     const owner = getDogPrimaryOwner(dog);
     const totalRes = calcReservaTotal(r);
@@ -6125,9 +6156,65 @@ function renderIncome() {
       </div>`);
   });
 
-  document.getElementById('income-pendiente-wrap').innerHTML = pendItems.length
-    ? pendItems.join('')
-    : '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin deudas pendientes.</p></div>';
+  const secHeader = (title, total, color) =>
+    `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:${color};border-radius:var(--radius);margin-bottom:12px;margin-top:8px">
+      <span style="font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.5px">${title}</span>
+      <span style="font-weight:700;font-size:15px">${fmtMoney(total)}</span>
+    </div>`;
+
+  const efectivoTotal = allStaysGlobal.reduce((s,x)=>s+getPendingAmount(x),0)
+                      + allRestGlobal.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0);
+  const potencialTotal = pendResArr.reduce((s,r)=>s+Math.max(0,calcReservaTotal(r)-_reservaAdvanceTotal(r)),0);
+
+  let pendHTML = '';
+
+  // ── EFECTIVOS ──
+  pendHTML += secHeader('Pendientes de cobro efectivos', efectivoTotal, 'var(--red-50)');
+  if (pendItems.length) {
+    pendHTML += pendItems.join('');
+  } else {
+    pendHTML += '<div class="empty-state" style="margin-bottom:16px"><div class="empty-icon">✅</div><p>Sin deudas efectivas pendientes.</p></div>';
+  }
+  pendHTML += `<div style="text-align:right;font-weight:700;font-size:13px;color:var(--red-800);padding:8px 14px;border-top:2px solid var(--red-200);margin-bottom:24px">TOTAL PENDIENTE DE COBRO EFECTIVO: ${fmtMoney(efectivoTotal)}</div>`;
+
+  // ── POTENCIALES ──
+  pendHTML += secHeader('Pendientes de cobro potenciales (reservas)', potencialTotal, 'var(--blue-50)');
+  if (pendResArr.length) {
+    const resItems = [];
+    pendResArr.forEach(r => {
+      const dog = DB.getDog(r.dog_id);
+      const owner = getDogPrimaryOwner(dog);
+      const totalRes = calcReservaTotal(r);
+      const advRes = _reservaAdvanceTotal(r);
+      const pendRes = Math.max(0, totalRes - advRes);
+      resItems.push(`
+        <div style="border:1px solid var(--blue-400);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
+          <div style="background:var(--blue-50);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div>
+              <span class="badge badge-teal" style="margin-right:6px">Reserva ${r.type}</span>
+              <strong style="font-size:14px">${dog?.name||'?'}</strong>
+              <span class="text-muted text-sm"> ${dog?.owner_last_name||''}</span>
+            </div>
+            <div style="font-size:16px;font-weight:700;color:var(--blue-800)">Pendiente ${fmtMoney(pendRes)}</div>
+          </div>
+          <div style="padding:10px 14px;font-size:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px 16px">
+            ${r.type==='hospedaje' ? `<div><span class="text-muted">Ingreso:</span> <strong>${fmtDate(r.reserved_from)}</strong></div><div><span class="text-muted">Salida:</span> <strong>${r.open_ended?'Sin fecha':fmtDate(r.check_out_date)}</strong></div>` : `<div><span class="text-muted">Fecha:</span> <strong>${fmtDate(r.date)}</strong></div>`}
+            <div><span class="text-muted">Total estimado:</span> <strong>${fmtMoney(totalRes)}</strong></div>
+            <div><span class="text-muted">Adelantado:</span> <strong style="color:var(--green-800)">${fmtMoney(advRes)}</strong></div>
+            ${owner?.phone ? `<div><span class="text-muted">Teléfono:</span> <strong>${owner.phone}</strong></div>` : ''}
+          </div>
+          <div style="padding:8px 14px;background:var(--surface);border-top:1px solid var(--border);display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick="openReservaModal(${r.id})">✏️ Ver reserva</button>
+          </div>
+        </div>`);
+    });
+    pendHTML += resItems.join('');
+  } else {
+    pendHTML += '<div class="empty-state" style="margin-bottom:16px"><div class="empty-icon">📋</div><p>Sin reservas pendientes.</p></div>';
+  }
+  pendHTML += `<div style="text-align:right;font-weight:700;font-size:13px;color:var(--blue-800);padding:8px 14px;border-top:2px solid var(--blue-200)">TOTAL PENDIENTE DE COBRO POTENCIAL: ${fmtMoney(potencialTotal)}</div>`;
+
+  document.getElementById('income-pendiente-wrap').innerHTML = pendHTML;
 
   // TAB: COBRADO — all payments for period stays (in-period + out-of-period), plus daycares and restaurant
   const paymentsForPeriodStays = DB.payments.filter(p => allStays.some(s => s.id === p.stay_id)).sort((a,b) => b.date.localeCompare(a.date));
