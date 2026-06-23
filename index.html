@@ -11043,6 +11043,13 @@ function switchReservasTab(tab, btn) {
   renderReservasPage();
 }
 
+function _switchReservasTabTo(tab) {
+  _reservasTab = tab;
+  document.querySelectorAll('#page-reservas .tab-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('reservas-tab-btn-' + tab);
+  if (btn) btn.classList.add('active');
+}
+
 function renderReservasPage() {
   const el = document.getElementById('reservas-content');
   const reservas = DB.reservas.filter(r => r.status === _reservasTab)
@@ -11709,6 +11716,7 @@ function setReservaStatus(id, newStatus) {
   r.status = newStatus;
   if (newStatus === 'caida') r.fallen_at = new Date().toISOString();
   DB.saveReservas(arr);
+  _switchReservasTabTo(newStatus);
   renderReservasPage();
   if (wasActive) {
     if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
@@ -11773,6 +11781,7 @@ function activateReserva(id) {
   res.status = 'activa';
   res.activated_at = new Date().toISOString();
   DB.saveReservas(arr);
+  _switchReservasTabTo('activa');
   renderReservasPage();
   if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
   alert('✅ Reserva activada. ' + (r.type === 'hospedaje' ? 'La estadía fue creada en Hospedaje.' : 'El registro fue creado en Daycare.'));
