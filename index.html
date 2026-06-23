@@ -5971,9 +5971,11 @@ function setIncomePeriod(mode) {
 }
 
 let _debtBreakdownStayId = null;
+let _debtBreakdownEditingHols = null; // null = not editing; array = draft holidays
 
 function openDebtBreakdown(stayId) {
   _debtBreakdownStayId = stayId;
+  _debtBreakdownEditingHols = null;
   _renderDebtBreakdown();
   document.getElementById('debt-btn-edit').onclick = () => { closeModal('modal-debt-breakdown'); openStayModal(stayId); };
   openModal('modal-debt-breakdown');
@@ -6063,31 +6065,35 @@ function _renderDebtBreakdown() {
   </table>`;
 
   // ── Gestión de feriados ──
+  const editing = _debtBreakdownEditingHols !== null;
+  const displayHols = editing ? _debtBreakdownEditingHols : holsInRange;
+
   html += `<div style="border:1px solid var(--amber-300);border-radius:var(--radius);padding:12px;background:var(--amber-50)">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-      <strong style="font-size:12px">🎉 Feriados aplicados</strong>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${isCustom
-          ? `<button class="btn btn-secondary btn-sm" onclick="_debtResetHolidays()">↺ Restaurar globales</button>`
-          : `<button class="btn btn-secondary btn-sm" onclick="_debtCustomizeHolidays()">✏️ Editar</button>`}
-      </div>
+      <strong style="font-size:12px">🎉 Feriados aplicados${editing ? ' <span style="color:var(--amber-800)">(editando...)</span>' : ''}</strong>
+      ${!editing ? `<button class="btn btn-secondary btn-sm" onclick="_debtStartEditHols()">✏️ Editar</button>` : ''}
     </div>`;
 
-  if (holsInRange.length === 0) {
-    html += `<div class="text-muted" style="font-size:12px">Sin feriados en el período de la estadía.</div>`;
+  if (displayHols.length === 0) {
+    html += `<div class="text-muted" style="font-size:12px;margin-bottom:8px">Sin feriados en el período de la estadía.</div>`;
   } else {
-    html += holsInRange.map(h => `
+    html += displayHols.map(h => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;background:#fff;border-radius:4px;margin-bottom:4px;border:1px solid var(--amber-200)">
         <span style="font-size:12px"><strong>${fmtDate(h.date)}</strong> — ${h.name||'sin nombre'} <span style="color:var(--amber-800)">+S/ ${HOLIDAY_SURCHARGE}</span></span>
-        ${isCustom ? `<button class="btn btn-danger btn-sm" style="padding:2px 8px" onclick="_debtRemoveHoliday('${h.date}')">✕</button>` : ''}
+        ${editing ? `<button class="btn btn-danger btn-sm" style="padding:2px 8px" onclick="_debtDraftRemoveHoliday('${h.date}')">Eliminar</button>` : ''}
       </div>`).join('');
   }
 
-  if (isCustom) {
-    html += `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+  if (editing) {
+    html += `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
       <input type="date" id="debt-hol-date" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px">
       <input type="text" id="debt-hol-name" placeholder="Nombre feriado" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;flex:1;min-width:120px">
-      <button class="btn btn-primary btn-sm" onclick="_debtAddHoliday()">+ Agregar</button>
+      <button class="btn btn-secondary btn-sm" onclick="_debtDraftAddHoliday()">+ Agregar</button>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--amber-300);padding-top:10px;margin-top:4px">
+      <button class="btn btn-primary btn-sm" onclick="_debtSaveHols()">💾 Guardar cambios</button>
+      <button class="btn btn-secondary btn-sm" onclick="_debtCancelHols()">✕ Cancelar</button>
+      ${isCustom ? `<button class="btn btn-secondary btn-sm" onclick="_debtDraftResetGlobal()">↺ Restaurar globales</button>` : ''}
     </div>`;
   }
 
@@ -6095,45 +6101,59 @@ function _renderDebtBreakdown() {
   document.getElementById('debt-modal-body').innerHTML = html;
 }
 
-function _debtSaveStay(updateFn) {
-  const stays = DB.stays;
-  const idx = stays.findIndex(s => s.id === _debtBreakdownStayId);
-  if (idx === -1) return;
-  updateFn(stays[idx]);
-  DB.saveStays(stays);
+function _debtStartEditHols() {
+  const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
+  if (!stay) return;
+  // Start draft from current applied holidays
+  const effectiveOut = stay.open_ended ? today() : stay.check_out_date;
+  const current = Array.isArray(stay.custom_holidays)
+    ? stay.custom_holidays
+    : getHolidaysInRange(stay.check_in_date, effectiveOut).filter(h => h.date >= stay.check_in_date && h.date < effectiveOut);
+  _debtBreakdownEditingHols = current.map(h => ({ date: h.date, name: h.name }));
   _renderDebtBreakdown();
 }
 
-function _debtCustomizeHolidays() {
-  _debtSaveStay(stay => {
-    const effectiveOut = stay.open_ended ? today() : stay.check_out_date;
-    const autoHols = getHolidaysInRange(stay.check_in_date, effectiveOut)
-      .filter(h => h.date >= stay.check_in_date && h.date < effectiveOut);
-    stay.custom_holidays = autoHols.map(h => ({ date: h.date, name: h.name }));
-  });
+function _debtCancelHols() {
+  _debtBreakdownEditingHols = null;
+  _renderDebtBreakdown();
 }
 
-function _debtResetHolidays() {
-  _debtSaveStay(stay => { delete stay.custom_holidays; });
+function _debtSaveHols() {
+  if (_debtBreakdownEditingHols === null) return;
+  const stays = DB.stays;
+  const idx = stays.findIndex(s => s.id === _debtBreakdownStayId);
+  if (idx === -1) return;
+  stays[idx].custom_holidays = _debtBreakdownEditingHols.slice();
+  DB.saveStays(stays);
+  _debtBreakdownEditingHols = null;
+  _renderDebtBreakdown();
 }
 
-function _debtAddHoliday() {
+function _debtDraftAddHoliday() {
+  if (_debtBreakdownEditingHols === null) return;
   const dateVal = document.getElementById('debt-hol-date').value;
   const nameVal = document.getElementById('debt-hol-name').value.trim() || 'Feriado manual';
   if (!dateVal) { alert('Seleccioná una fecha.'); return; }
-  _debtSaveStay(stay => {
-    if (!Array.isArray(stay.custom_holidays)) return;
-    if (stay.custom_holidays.some(h => h.date === dateVal)) { alert('Ese feriado ya existe.'); return; }
-    stay.custom_holidays.push({ date: dateVal, name: nameVal });
-    stay.custom_holidays.sort((a,b) => a.date.localeCompare(b.date));
-  });
+  if (_debtBreakdownEditingHols.some(h => h.date === dateVal)) { alert('Ese feriado ya existe.'); return; }
+  _debtBreakdownEditingHols.push({ date: dateVal, name: nameVal });
+  _debtBreakdownEditingHols.sort((a,b) => a.date.localeCompare(b.date));
+  _renderDebtBreakdown();
 }
 
-function _debtRemoveHoliday(date) {
-  _debtSaveStay(stay => {
-    if (!Array.isArray(stay.custom_holidays)) return;
-    stay.custom_holidays = stay.custom_holidays.filter(h => h.date !== date);
-  });
+function _debtDraftRemoveHoliday(date) {
+  if (_debtBreakdownEditingHols === null) return;
+  _debtBreakdownEditingHols = _debtBreakdownEditingHols.filter(h => h.date !== date);
+  _renderDebtBreakdown();
+}
+
+function _debtDraftResetGlobal() {
+  const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
+  if (!stay) return;
+  const effectiveOut = stay.open_ended ? today() : stay.check_out_date;
+  _debtBreakdownEditingHols = getHolidaysInRange(stay.check_in_date, effectiveOut)
+    .filter(h => h.date >= stay.check_in_date && h.date < effectiveOut)
+    .map(h => ({ date: h.date, name: h.name }));
+  _renderDebtBreakdown();
 }
 
 function renderIncome() {
