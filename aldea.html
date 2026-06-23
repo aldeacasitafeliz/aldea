@@ -9200,6 +9200,7 @@ function init() {
   // Auto-update vacation statuses
   checkVacationStatus();
   initHolidays();
+  _migrateAllReservasToPendiente();
   _repairOrphanedReservaStays();
   renderDashboard();
   updateMedsAlertDot();
@@ -11748,6 +11749,49 @@ function setReservaStatus(id, newStatus) {
   }
 }
 
+function _migrateAllReservasToPendiente() {
+  if (localStorage.getItem('aldea_mig_reservas_pendiente_v1')) return;
+  const arr = DB.reservas;
+  if (!arr.length) { localStorage.setItem('aldea_mig_reservas_pendiente_v1', '1'); return; }
+
+  // Collect all stay/dc IDs that were created from reservas
+  const stayIds = new Set();
+  const dcIds   = new Set();
+  arr.forEach(r => {
+    if (r.activated_stay_id) stayIds.add(r.activated_stay_id);
+    if (r.activated_dc_id)   dcIds.add(r.activated_dc_id);
+    // Also find by dog+date for pre-fix data
+    if (r.type === 'hospedaje' && r.reserved_from) {
+      DB.stays.filter(s => s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && !s.pickup_time).forEach(s => stayIds.add(s.id));
+    }
+    if (r.type === 'daycare' && r.date) {
+      DB.daycares.filter(d => d.dog_id === r.dog_id && d.date === r.date).forEach(d => dcIds.add(d.id));
+    }
+  });
+
+  // Reset all reservas to pendiente
+  arr.forEach(r => {
+    r.status = 'pendiente';
+    delete r.activated_stay_id;
+    delete r.activated_dc_id;
+    delete r.activated_at;
+    delete r.fallen_at;
+  });
+  DB.saveReservas(arr);
+
+  // Delete linked stays/daycares and their payments
+  if (stayIds.size > 0) {
+    DB.saveStays(DB.stays.filter(s => !stayIds.has(s.id)));
+    DB.savePayments(DB.payments.filter(p => !stayIds.has(p.stay_id)));
+  }
+  if (dcIds.size > 0) {
+    DB.saveDaycares(DB.daycares.filter(d => !dcIds.has(d.id)));
+    DB.savePayments(DB.payments.filter(p => !dcIds.has(p.stay_id)));
+  }
+
+  localStorage.setItem('aldea_mig_reservas_pendiente_v1', '1');
+}
+
 function _repairOrphanedReservaStays() {
   // Delete stays/dcs that were created from a reserva but the reserva is no longer active.
   // Only auto-deletes if the stay has NO real payments (safe to remove without losing money data).
@@ -11793,6 +11837,13 @@ function _repairOrphanedReservaStays() {
 function activateReserva(id) {
   const r = DB.reservas.find(x => x.id === id);
   if (!r) return;
+
+  // Block activation before the reservation date
+  const reservaDate = r.type === 'hospedaje' ? r.reserved_from : r.date;
+  if (reservaDate && reservaDate > today()) {
+    alert(`⚠️ No se puede activar esta reserva todavía. La fecha de ingreso es ${fmtDate(reservaDate)}.`);
+    return;
+  }
 
   // Idempotency guard — block double activation
   if (r.type === 'hospedaje') {
