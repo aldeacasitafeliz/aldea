@@ -5785,10 +5785,13 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
   }
 
   // Desktop: original compact icon card
-  return `<div class="dog-daily-card ${sectionCls}" onclick="viewDog(${dog.id})">
+  const overdueDaysCard = isOverdueCard ? dateDiff(checkoutStr, date) : 0;
+  const overdueTextCard = isOverdueCard ? (overdueDaysCard === 0 ? 'hoy' : overdueDaysCard === 1 ? 'ayer' : `hace ${overdueDaysCard} días`) : '';
+  return `<div class="dog-daily-card ${sectionCls}" onclick="viewDog(${dog.id})" style="${isOverdueCard?'background:var(--red-50,#fef2f2);border-left:3px solid var(--red-400,#f87171)':''}">
     <div class="dog-card-num">${num}</div>
     <div style="min-width:0;flex:1">
       <div class="dog-card-name">${dog.name} <span style="font-weight:400;font-size:13px;color:var(--text-muted)">${ownerLabel}</span></div>
+      ${isOverdueCard ? `<div style="font-size:12px;color:var(--red-700,#b91c1c);font-weight:600;margin-top:2px">⚠ Salida vencida — debió salir ${overdueTextCard} (${fmtDate(checkoutStr)})</div>` : ''}
       ${primary?.phone ? `<div class="dog-card-sub">📞 ${primary.phone}</div>` : ''}
     </div>
     <div class="dog-card-icons">
