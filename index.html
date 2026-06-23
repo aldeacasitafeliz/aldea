@@ -5632,6 +5632,31 @@ function renderDashboard() {
     const c = DB.caretakers.find(x => x.id === v.caretaker_id);
     alerts += `<div class="alert alert-info">📅 <strong>${c?.name||'?'}</strong> sale de vacaciones el ${v.start_dt.replace('T',' ')}.</div>`;
   });
+  // Overdue stays
+  const overdueStays = hosted.filter(s => !s.open_ended && s.check_out_date && s.check_out_date < d);
+  overdueStays.forEach(s => {
+    const dog = DB.getDog(s.dog_id);
+    const days = dateDiff(s.check_out_date, d);
+    const when = days === 0 ? 'hoy' : days === 1 ? 'ayer' : `hace ${days} días`;
+    alerts += `<div class="alert alert-danger">⚠ <strong>${dog?.name||'?'} ${dog?.owner_last_name||''}</strong> debió salir ${when} (${fmtDate(s.check_out_date)}) — salida sin confirmar.</div>`;
+  });
+
+  // Alerts for present dogs: meds, allergies, conflicts, incidents
+  const presentDogIds = [...new Set([...hosted.map(s=>s.dog_id), ...leaving.map(s=>s.dog_id), ...daycare.map(s=>s.dog_id)])];
+  const presentDogs = presentDogIds.map(id => DB.getDog(id)).filter(Boolean);
+
+  const withMeds = presentDogs.filter(dog => (dog.medications||[]).length > 0);
+  if (withMeds.length) alerts += `<div class="alert alert-warn">💊 Medicamentos hoy: ${withMeds.map(d=>`<strong>${d.name}</strong>`).join(', ')}.</div>`;
+
+  const withAllergies = presentDogs.filter(dog => (dog.allergies||[]).length > 0);
+  if (withAllergies.length) alerts += `<div class="alert alert-warn">🚫 Alergias: ${withAllergies.map(d=>`<strong>${d.name}</strong> (${(d.allergies||[]).map(a=>a.cause||a.type).join(', ')})`).join('; ')}.</div>`;
+
+  const withConflicts = presentDogs.filter(dog => getDogConflicts(dog.id).length > 0);
+  if (withConflicts.length) alerts += `<div class="alert alert-warn">⚡ Relaciones complicadas: ${withConflicts.map(d=>`<strong>${d.name}</strong>`).join(', ')}.</div>`;
+
+  const withIncidents = presentDogs.filter(dog => getDogIncidents(dog.id).length > 0);
+  if (withIncidents.length) alerts += `<div class="alert alert-warn">📋 Con incidencias previas: ${withIncidents.map(d=>`<strong>${d.name}</strong>`).join(', ')}.</div>`;
+
   document.getElementById('dash-alerts').innerHTML = alerts;
 
   // Lists
