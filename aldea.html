@@ -979,57 +979,11 @@ tr:hover td { background: var(--gray-50); }
         <button class="tab-btn" id="income-tab-btn-cobrado" onclick="switchIncomeTab('cobrado',this)">Cobrado</button>
         <button class="tab-btn" id="income-tab-btn-proyectado" onclick="switchIncomeTab('proyectado',this)">Proyectado</button>
         <button class="tab-btn" id="income-tab-btn-deudas" onclick="switchIncomeTab('deudas',this)">Perros con deuda</button>
-        <button class="tab-btn" id="income-tab-btn-comparativos" onclick="switchIncomeTab('comparativos',this)">📊 Comparativos</button>
       </div>
       <div id="tab-pendiente" class="tab-panel active"><div class="card" style="padding:0;overflow:hidden"><div id="income-pendiente-wrap"></div></div></div>
       <div id="tab-cobrado" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-cobrado-wrap"></div></div></div>
       <div id="tab-proyectado" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-proyectado-wrap"></div></div></div>
       <div id="tab-deudas" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-deudas-wrap"></div></div></div>
-      <div id="tab-comparativos" class="tab-panel">
-        <div class="card" style="margin-bottom:16px">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-            <!-- Periodo 1 -->
-            <div>
-              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:10px">Periodo 1</div>
-              <div style="display:flex;gap:6px;margin-bottom:8px">
-                <button id="cmp1-btn-month" class="btn btn-secondary btn-sm" onclick="setCmpPeriod(1,'month')">Este mes</button>
-                <button id="cmp1-btn-week"  class="btn btn-secondary btn-sm" onclick="setCmpPeriod(1,'week')">Esta semana</button>
-                <button id="cmp1-btn-free"  class="btn btn-secondary btn-sm" onclick="setCmpPeriod(1,'free')">Fecha libre</button>
-              </div>
-              <div style="display:flex;gap:6px;align-items:center">
-                <input type="date" id="cmp1-from" class="form-control" style="height:32px;font-size:13px" onchange="clearCmpActive(1)">
-                <span class="text-muted">—</span>
-                <input type="date" id="cmp1-to" class="form-control" style="height:32px;font-size:13px" onchange="clearCmpActive(1)">
-              </div>
-              <div id="cmp1-label" class="text-muted text-sm" style="margin-top:4px"></div>
-            </div>
-            <!-- Periodo 2 -->
-            <div>
-              <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:10px">Periodo 2</div>
-              <div style="display:flex;gap:6px;margin-bottom:8px">
-                <button id="cmp2-btn-prev-month" class="btn btn-secondary btn-sm" onclick="setCmpPeriod(2,'prev-month')">Mes pasado</button>
-                <button id="cmp2-btn-prev-week"  class="btn btn-secondary btn-sm" onclick="setCmpPeriod(2,'prev-week')">Semana pasada</button>
-                <button id="cmp2-btn-free"        class="btn btn-secondary btn-sm" onclick="setCmpPeriod(2,'free')">Fecha libre</button>
-              </div>
-              <div style="display:flex;gap:6px;align-items:center">
-                <input type="date" id="cmp2-from" class="form-control" style="height:32px;font-size:13px" onchange="clearCmpActive(2)">
-                <span class="text-muted">—</span>
-                <input type="date" id="cmp2-to" class="form-control" style="height:32px;font-size:13px" onchange="clearCmpActive(2)">
-              </div>
-              <div id="cmp2-label" class="text-muted text-sm" style="margin-top:4px"></div>
-            </div>
-          </div>
-          <!-- Filtros de servicio -->
-          <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-md);display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted)">Incluir:</span>
-            <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px"><input type="checkbox" id="cmp-svc-hosp" checked> Hospedaje</label>
-            <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px"><input type="checkbox" id="cmp-svc-dc" checked> Daycare</label>
-            <label style="display:flex;gap:6px;align-items:center;cursor:pointer;font-size:13px"><input type="checkbox" id="cmp-svc-rest" checked> Restaurante</label>
-            <button class="btn btn-primary" style="margin-left:auto;height:34px" onclick="renderComparativos()">📊 Calcular comparativo</button>
-          </div>
-        </div>
-        <div id="comparativos-result"></div>
-      </div>
     </div>
 
     <!-- PERROS MOROSOS -->
@@ -2125,7 +2079,7 @@ tr:hover td { background: var(--gray-50); }
     <div id="vac-conflict-info" style="background:var(--amber-50,#fffbeb);border:1px solid var(--amber-200,#fde68a);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px"></div>
     <div id="vac-conflict-list"></div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('modal-vac-conflict')">Cerrar sin reasignar</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-vac-conflict')">Reasignar después</button>
       <button class="btn btn-primary" onclick="saveVacationReassignments()">Guardar reasignaciones</button>
     </div>
   </div>
@@ -5782,21 +5736,27 @@ function renderDailyRange() {
       <td style="text-align:center;color:${isWeekend ? '#A32D2D' : 'var(--text-muted)'};font-weight:${isWeekend?'600':'400'}">${r.dow}</td>
       <td style="text-align:center">${r.hosted}</td>
       <td style="text-align:center">${r.dc}</td>
-      <td style="text-align:center">${r.resHosp + r.resDc}</td>
+      <td style="text-align:center">${r.resHosp}</td>
+      <td style="text-align:center">${r.resDc}</td>
       <td style="text-align:center">${r.leaving}</td>
       <td style="text-align:center;${totalStyle}">${r.total}</td>
     </tr>`;
   }).join('');
 
-  wrap.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;font-size:13px">
+  wrap.innerHTML = `<div><table style="width:100%;font-size:12px;table-layout:fixed">
+    <colgroup>
+      <col style="width:18%"><col style="width:8%"><col style="width:13%"><col style="width:11%">
+      <col style="width:13%"><col style="width:12%"><col style="width:12%"><col style="width:13%">
+    </colgroup>
     <thead><tr>
-      <th>Fecha</th>
-      <th style="text-align:center">Día</th>
-      <th style="text-align:center">Hospedados</th>
-      <th style="text-align:center">Daycare</th>
-      <th style="text-align:center">Reservas</th>
-      <th style="text-align:center">Salidas</th>
-      <th style="text-align:center">Total</th>
+      <th style="font-size:11px">Fecha</th>
+      <th style="text-align:center;font-size:11px">Día</th>
+      <th style="text-align:center;font-size:11px">Hosp.</th>
+      <th style="text-align:center;font-size:11px">Daycare</th>
+      <th style="text-align:center;font-size:11px">Res. hosp.</th>
+      <th style="text-align:center;font-size:11px">Res. DC</th>
+      <th style="text-align:center;font-size:11px">Salidas</th>
+      <th style="text-align:center;font-size:11px">Total</th>
     </tr></thead>
     <tbody>${rowsHTML}</tbody>
   </table></div>
@@ -5949,7 +5909,6 @@ function switchIncomeTab(tab, btn) {
   page.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('tab-' + tab).classList.add('active');
-  if (tab === 'comparativos') initCmpDefaults();
 }
 
 let _incomeFilter = { from: '', to: '' };
@@ -6481,348 +6440,6 @@ function clearSalidasHistFilter() {
   document.getElementById('salidas-hist-from').value = '';
   document.getElementById('salidas-hist-to').value = '';
   renderSalidasHistory();
-}
-
-// ===================== COMPARATIVOS =====================
-let _cmpActive = { 1: '', 2: '' };
-
-function initCmpDefaults() {
-  if (document.getElementById('cmp1-from').value && document.getElementById('cmp2-from').value) return;
-  setCmpPeriod(1, 'month');
-  setCmpPeriod(2, 'prev-month');
-}
-
-function clearCmpActive(n) {
-  _cmpActive[n] = '';
-  document.getElementById('cmp'+n+'-label').textContent = '';
-  _updateCmpButtons(n, '');
-}
-
-function _updateCmpButtons(n, activeMode) {
-  const btns1 = { month:'cmp1-btn-month', week:'cmp1-btn-week', free:'cmp1-btn-free' };
-  const btns2 = { 'prev-month':'cmp2-btn-prev-month', 'prev-week':'cmp2-btn-prev-week', free:'cmp2-btn-free' };
-  const map = n === 1 ? btns1 : btns2;
-  Object.entries(map).forEach(([mode, id]) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.className = 'btn btn-sm ' + (mode === activeMode ? 'btn-primary' : 'btn-secondary');
-  });
-}
-
-function setCmpPeriod(n, mode) {
-  const t = today();
-  const d = new Date(t + 'T12:00:00');
-  let from, to, label;
-  if (mode === 'month') {
-    from = t.slice(0,7) + '-01';
-    to = t.slice(0,7) + '-' + String(new Date(d.getFullYear(), d.getMonth()+1, 0).getDate()).padStart(2,'0');
-    label = 'Este mes (' + from.slice(0,7) + ')';
-  } else if (mode === 'prev-month') {
-    const pm = new Date(d.getFullYear(), d.getMonth()-1, 1);
-    const pmY = pm.getFullYear(), pmM = String(pm.getMonth()+1).padStart(2,'0');
-    from = `${pmY}-${pmM}-01`;
-    to = `${pmY}-${pmM}-` + String(new Date(pmY, pm.getMonth()+1, 0).getDate()).padStart(2,'0');
-    label = 'Mes pasado (' + `${pmY}-${pmM}` + ')';
-  } else if (mode === 'week') {
-    const dow = d.getDay();
-    const mon = new Date(d); mon.setDate(d.getDate() - ((dow+6)%7));
-    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
-    from = mon.toISOString().slice(0,10);
-    to   = sun.toISOString().slice(0,10);
-    label = 'Esta semana';
-  } else if (mode === 'prev-week') {
-    const dow = d.getDay();
-    const mon = new Date(d); mon.setDate(d.getDate() - ((dow+6)%7) - 7);
-    const sun = new Date(mon); sun.setDate(mon.getDate()+6);
-    from = mon.toISOString().slice(0,10);
-    to   = sun.toISOString().slice(0,10);
-    label = 'Semana pasada';
-  } else if (mode === 'free') {
-    label = 'Fecha libre';
-    document.getElementById('cmp'+n+'-label').textContent = label;
-    _cmpActive[n] = mode;
-    _updateCmpButtons(n, mode);
-    return;
-  }
-  document.getElementById('cmp'+n+'-from').value = from;
-  document.getElementById('cmp'+n+'-to').value   = to;
-  document.getElementById('cmp'+n+'-label').textContent = label;
-  _cmpActive[n] = mode;
-  _updateCmpButtons(n, mode);
-}
-
-function _computePeriodStats(from, to, useHosp, useDc, useRest) {
-  const inRange  = date => date >= from && date <= to;
-  const overlaps = s    => s.check_out_date >= from && s.check_in_date <= to;
-
-  const stays = useHosp ? DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado' && overlaps(s)) : [];
-  const dcs   = useDc   ? DB.daycares.filter(d => inRange(d.date)) : [];
-  const rests = useRest ? DB.restaurant.filter(r => inRange(r.date)) : [];
-
-  // Financials
-  const hospTotal   = stays.reduce((s,x) => s + calcStayTotal(x), 0);
-  const dcTotal     = dcs.reduce((s,d)   => s + parseFloat(d.rate||0), 0);
-  const restTotal   = rests.reduce((s,r) => s + r.total, 0);
-  const totalProy   = hospTotal + dcTotal + restTotal;
-
-  const hospCobrado = DB.payments
-    .filter(p => inRange(p.date) && stays.some(s => s.id === p.stay_id))
-    .reduce((s,p) => s + parseFloat(p.amount), 0);
-  const dcCobrado   = dcs.reduce((s,d) => s + parseFloat(d.rate||0), 0);
-  const restCobrado = rests.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
-  const totalCob    = hospCobrado + dcCobrado + restCobrado;
-
-  const hospPend    = stays.reduce((s,x) => s + getPendingAmount(x), 0);
-  const restPend    = rests.filter(r => !r.paid).reduce((s,r) => s + r.total, 0);
-  const totalPend   = hospPend + restPend;
-
-  // Counts
-  const nHosp = stays.length;
-  const nDc   = dcs.length;
-  const nRest = rests.length;
-
-  // Unique dogs
-  const dogIds = new Set([...stays.map(s=>s.dog_id), ...dcs.map(d=>d.dog_id), ...rests.map(r=>r.dog_id)]);
-  const nDogs  = dogIds.size;
-  const ticket = nDogs > 0 ? totalProy / nDogs : 0;
-
-  // Avg daily occupancy (dogs sleeping per day in range)
-  const days = datesInRange(from, to);
-  const avgOcc = days.length > 0
-    ? (days.reduce((s,day) => s + DB.stays.filter(st => st.service_type==='hospedaje' && st.status!=='cancelado' && st.check_in_date<=day && st.check_out_date>day).length, 0) / days.length).toFixed(1)
-    : 0;
-
-  // Day with highest/lowest income
-  const dayIncome = {};
-  stays.forEach(s => {
-    const total = calcStayTotal(s);
-    // distribute to checkout day for simplicity
-    const k = s.check_out_date;
-    if (k >= from && k <= to) dayIncome[k] = (dayIncome[k]||0) + total;
-  });
-  dcs.forEach(d => { dayIncome[d.date] = (dayIncome[d.date]||0) + parseFloat(d.rate||0); });
-  rests.forEach(r => { dayIncome[r.date] = (dayIncome[r.date]||0) + r.total; });
-  const dayEntries = Object.entries(dayIncome);
-  const maxDay = dayEntries.length ? dayEntries.reduce((a,b) => b[1]>a[1]?b:a) : null;
-  const minDay = dayEntries.length ? dayEntries.reduce((a,b) => b[1]<a[1]?b:a) : null;
-
-  // Deudas
-  const debtDogs = new Set([
-    ...stays.filter(s => getPendingAmount(s) > 0).map(s => s.dog_id),
-    ...rests.filter(r => !r.paid).map(r => r.dog_id)
-  ]);
-  const debtTotal = totalPend;
-
-  return { hospTotal, dcTotal, restTotal, totalProy, totalCob, totalPend,
-    hospCobrado, dcCobrado, restCobrado, hospPend, restPend,
-    nHosp, nDc, nRest, nDogs, ticket, avgOcc,
-    maxDay, minDay, debtDogs: debtDogs.size, debtTotal };
-}
-
-function renderComparativos() {
-  const from1 = document.getElementById('cmp1-from').value;
-  const to1   = document.getElementById('cmp1-to').value;
-  const from2 = document.getElementById('cmp2-from').value;
-  const to2   = document.getElementById('cmp2-to').value;
-  if (!from1||!to1||!from2||!to2) {
-    document.getElementById('comparativos-result').innerHTML = '<div class="alert alert-warn">Selecciona ambos periodos para comparar.</div>';
-    return;
-  }
-  const useHosp = document.getElementById('cmp-svc-hosp').checked;
-  const useDc   = document.getElementById('cmp-svc-dc').checked;
-  const useRest = document.getElementById('cmp-svc-rest').checked;
-  if (!useHosp && !useDc && !useRest) {
-    document.getElementById('comparativos-result').innerHTML = '<div class="alert alert-warn">Selecciona al menos un tipo de servicio.</div>';
-    return;
-  }
-
-  const s1 = _computePeriodStats(from1, to1, useHosp, useDc, useRest);
-  const s2 = _computePeriodStats(from2, to2, useHosp, useDc, useRest);
-  const label1 = `${fmtDate(from1)} – ${fmtDate(to1)}`;
-  const label2 = `${fmtDate(from2)} – ${fmtDate(to2)}`;
-
-  function diff(a, b) {
-    const d = b - a;
-    const pct = a !== 0 ? ((d/Math.abs(a))*100).toFixed(1) : (b !== 0 ? '∞' : '0.0');
-    const sign = d >= 0 ? '+' : '';
-    const col  = d > 0 ? 'var(--green-800)' : d < 0 ? 'var(--red-800)' : 'var(--text-muted)';
-    return { d, pct, sign, col };
-  }
-  function moneyDiff(a, b) {
-    const { d, pct, sign, col } = diff(a, b);
-    return `<td style="color:${col};font-weight:600">${sign}${fmtMoney(d)}</td><td style="color:${col}">${sign}${pct}%</td>`;
-  }
-  function numDiff(a, b, unit='') {
-    const { d, pct, sign, col } = diff(a, b);
-    return `<td style="color:${col};font-weight:600">${sign}${d}${unit}</td><td style="color:${col}">${sign}${pct}%</td>`;
-  }
-
-  const rows = [];
-  const addRow = (label, v1, v2, diffHtml, bold=false) => rows.push(
-    `<tr${bold?' style="background:var(--green-50);font-weight:700"':''}>
-      <td>${label}</td><td>${v1}</td><td>${v2}</td>${diffHtml}
-    </tr>`
-  );
-
-  addRow('💰 Ingreso proyectado total', fmtMoney(s1.totalProy), fmtMoney(s2.totalProy), moneyDiff(s1.totalProy, s2.totalProy), true);
-  if (useHosp) addRow('🏠 Hospedaje', fmtMoney(s1.hospTotal), fmtMoney(s2.hospTotal), moneyDiff(s1.hospTotal, s2.hospTotal));
-  if (useDc)   addRow('☀️ Daycare', fmtMoney(s1.dcTotal), fmtMoney(s2.dcTotal), moneyDiff(s1.dcTotal, s2.dcTotal));
-  if (useRest) addRow('🍽️ Restaurante', fmtMoney(s1.restTotal), fmtMoney(s2.restTotal), moneyDiff(s1.restTotal, s2.restTotal));
-  addRow('✅ Dinero cobrado', fmtMoney(s1.totalCob), fmtMoney(s2.totalCob), moneyDiff(s1.totalCob, s2.totalCob));
-  addRow('⏳ Pendiente de cobro', fmtMoney(s1.totalPend), fmtMoney(s2.totalPend), moneyDiff(s1.totalPend, s2.totalPend));
-  if (useHosp) addRow('🏠 N° hospedajes', s1.nHosp, s2.nHosp, numDiff(s1.nHosp, s2.nHosp));
-  if (useDc)   addRow('☀️ N° daycares', s1.nDc, s2.nDc, numDiff(s1.nDc, s2.nDc));
-  if (useRest) addRow('🍽️ N° consumos restaurante', s1.nRest, s2.nRest, numDiff(s1.nRest, s2.nRest));
-  addRow('🐶 Perros únicos', s1.nDogs, s2.nDogs, numDiff(s1.nDogs, s2.nDogs));
-  addRow('🎟️ Ticket promedio / perro', fmtMoney(s1.ticket), fmtMoney(s2.ticket), moneyDiff(s1.ticket, s2.ticket));
-  addRow('🛏️ Ocupación promedio diaria', s1.avgOcc, s2.avgOcc, numDiff(parseFloat(s1.avgOcc), parseFloat(s2.avgOcc), ' perros'));
-  addRow('📈 Día mayor ingreso', s1.maxDay ? `${fmtDate(s1.maxDay[0])} (${fmtMoney(s1.maxDay[1])})` : '—', s2.maxDay ? `${fmtDate(s2.maxDay[0])} (${fmtMoney(s2.maxDay[1])})` : '—', '<td colspan="2"></td>');
-  addRow('📉 Día menor ingreso', s1.minDay ? `${fmtDate(s1.minDay[0])} (${fmtMoney(s1.minDay[1])})` : '—', s2.minDay ? `${fmtDate(s2.minDay[0])} (${fmtMoney(s2.minDay[1])})` : '—', '<td colspan="2"></td>');
-  addRow('⚠️ Perros con deuda', s1.debtDogs, s2.debtDogs, numDiff(s1.debtDogs, s2.debtDogs));
-  addRow('💸 Monto total adeudado', fmtMoney(s1.debtTotal), fmtMoney(s2.debtTotal), moneyDiff(s1.debtTotal, s2.debtTotal));
-
-  // Auto-interpretation
-  const interp = [];
-  const dTot = s2.totalProy - s1.totalProy;
-  if (dTot > 0) interp.push(`Los ingresos proyectados aumentaron en <strong>${fmtMoney(dTot)}</strong> respecto al periodo anterior.`);
-  else if (dTot < 0) interp.push(`Los ingresos proyectados disminuyeron en <strong>${fmtMoney(Math.abs(dTot))}</strong> respecto al periodo anterior.`);
-  else interp.push('Los ingresos proyectados se mantuvieron iguales entre ambos periodos.');
-
-  const growths = [];
-  if (useHosp) growths.push(['hospedaje', s2.hospTotal - s1.hospTotal]);
-  if (useDc)   growths.push(['daycare', s2.dcTotal - s1.dcTotal]);
-  if (useRest) growths.push(['restaurante', s2.restTotal - s1.restTotal]);
-  if (growths.length > 1) {
-    const top = growths.reduce((a,b) => b[1]>a[1]?b:a);
-    if (top[1] > 0) interp.push(`El mayor crecimiento provino de <strong>${top[0]}</strong>.`);
-    else if (top[1] < 0) { const bot = growths.reduce((a,b) => b[1]<a[1]?b:a); interp.push(`La mayor caída fue en <strong>${bot[0]}</strong>.`); }
-  }
-
-  const dCob = s2.totalCob - s1.totalCob;
-  if (dCob > 0) interp.push(`El dinero cobrado creció en <strong>${fmtMoney(dCob)}</strong>.`);
-  else if (dCob < 0) interp.push(`El dinero cobrado bajó en <strong>${fmtMoney(Math.abs(dCob))}</strong>.`);
-
-  const dPend = s2.totalPend - s1.totalPend;
-  if (dPend > 0) interp.push(`El dinero pendiente de cobro <strong>aumentó en ${fmtMoney(dPend)}</strong> — conviene revisar las cuentas por cobrar.`);
-  else if (dPend < 0) interp.push(`El dinero pendiente de cobro bajó en <strong>${fmtMoney(Math.abs(dPend))}</strong>.`);
-
-  const dTick = s2.ticket - s1.ticket;
-  if (Math.abs(dTick) > 0.01) interp.push(`El ticket promedio por perro ${dTick>0?'subió':'bajó'} en <strong>${fmtMoney(Math.abs(dTick))}</strong>, lo que indica ${dTick>0?'mayor':'menor'} ingreso por perro.`);
-
-  if (s2.debtDogs > s1.debtDogs) interp.push(`La cantidad de perros con deuda <strong>aumentó de ${s1.debtDogs} a ${s2.debtDogs}</strong>.`);
-  else if (s2.debtDogs < s1.debtDogs) interp.push(`La cantidad de perros con deuda bajó de ${s1.debtDogs} a <strong>${s2.debtDogs}</strong>.`);
-
-  const table = `<table style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead><tr style="background:var(--gray-100)">
-      <th style="padding:10px 12px;text-align:left;border-bottom:2px solid var(--border-md)">Indicador</th>
-      <th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border-md)">${label1}</th>
-      <th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border-md)">${label2}</th>
-      <th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border-md)">Diferencia</th>
-      <th style="padding:10px 12px;text-align:right;border-bottom:2px solid var(--border-md)">Variación %</th>
-    </tr></thead>
-    <tbody style="font-size:13px">${rows.map(r => r.replace(/<td>/g,'<td style="padding:9px 12px;border-bottom:1px solid var(--border-md)">').replace(/<td style="([^"]+)">/g,'<td style="$1;padding:9px 12px;border-bottom:1px solid var(--border-md);text-align:right">').replace(/<td>([^<])/g,'<td style="padding:9px 12px;border-bottom:1px solid var(--border-md)">$1')).join('')}</tbody>
-  </table>`;
-
-  // Store for export
-  window._lastCmp = { s1, s2, label1, label2, rows: [
-    ['Ingreso proyectado total', s1.totalProy, s2.totalProy],
-    ...(useHosp?[['Hospedaje', s1.hospTotal, s2.hospTotal]]:[]),
-    ...(useDc  ?[['Daycare',   s1.dcTotal,   s2.dcTotal  ]]:[]),
-    ...(useRest?[['Restaurante',s1.restTotal, s2.restTotal]]:[]),
-    ['Dinero cobrado', s1.totalCob, s2.totalCob],
-    ['Pendiente de cobro', s1.totalPend, s2.totalPend],
-    ...(useHosp?[['N° hospedajes', s1.nHosp, s2.nHosp]]:[]),
-    ...(useDc  ?[['N° daycares',   s1.nDc,   s2.nDc  ]]:[]),
-    ...(useRest?[['N° consumos restaurante', s1.nRest, s2.nRest]]:[]),
-    ['Perros únicos', s1.nDogs, s2.nDogs],
-    ['Ticket promedio / perro', s1.ticket, s2.ticket],
-    ['Ocupación promedio diaria', parseFloat(s1.avgOcc), parseFloat(s2.avgOcc)],
-    ['Perros con deuda', s1.debtDogs, s2.debtDogs],
-    ['Monto total adeudado', s1.debtTotal, s2.debtTotal],
-  ], interp };
-
-  document.getElementById('comparativos-result').innerHTML = `
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-      <div style="padding:14px 16px;background:var(--gray-50);border-bottom:1px solid var(--border-md);display:flex;justify-content:space-between;align-items:center">
-        <div style="font-size:13px;font-weight:600">Comparativo: <span style="color:var(--primary)">${label1}</span> vs <span style="color:var(--teal-700)">${label2}</span></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary btn-sm" onclick="exportCmpPDF()">📄 PDF</button>
-          <button class="btn btn-secondary btn-sm" onclick="exportCmpExcel()">📊 Excel</button>
-        </div>
-      </div>
-      <div style="overflow-x:auto;padding:0">${table}</div>
-    </div>
-    <div class="card" style="margin-bottom:0">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:12px">💡 Interpretación automática</div>
-      <ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px">
-        ${interp.map(i => `<li style="font-size:13px;line-height:1.5">${i}</li>`).join('')}
-      </ul>
-    </div>`;
-}
-
-function exportCmpPDF() {
-  const c = window._lastCmp;
-  if (!c) return;
-  const fmtMny = n => `S/ ${parseFloat(n||0).toFixed(2)}`;
-  const sign   = d => d >= 0 ? '+' : '';
-  const pct    = (a,b) => a !== 0 ? sign(b-a)+((( b-a)/Math.abs(a))*100).toFixed(1)+'%' : (b!==0?'∞':'0%');
-  const rows   = c.rows.map(([lbl,v1,v2]) => {
-    const d = v2 - v1;
-    const isNum = Number.isInteger(v1) && Math.abs(v1) < 1000 && Number.isInteger(v2);
-    const fmt = isNum ? v => String(v) : fmtMny;
-    return [lbl, fmt(v1), fmt(v2), (d>=0?'+':'')+fmt(d), pct(v1,v2)];
-  });
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <title>Comparativo Aldea</title>
-    <style>body{font-family:Arial,sans-serif;padding:20px;color:#111;font-size:12px}
-    table{width:100%;border-collapse:collapse;margin-bottom:20px}
-    th{background:#DCE6F1;padding:6px 8px;text-align:left;font-size:11px}
-    td{padding:6px 8px;border-bottom:1px solid #ddd}
-    h1{font-size:16px;margin-bottom:4px}h2{font-size:13px;margin:20px 0 8px;border-bottom:2px solid #333;padding-bottom:4px}
-    .pos{color:#1a7a3c}.neg{color:#b91c1c}li{margin-bottom:4px}
-    @media print{body{padding:0}}</style></head><body>
-    <h1>🐾 Aldea — Comparativo de periodos</h1>
-    <p style="color:#555;margin-bottom:20px">Generado: ${new Date().toLocaleString('es-PE')}</p>
-    <h2>Comparativo</h2>
-    <table><thead><tr><th>Indicador</th><th>${c.label1}</th><th>${c.label2}</th><th>Diferencia</th><th>Variación %</th></tr></thead>
-    <tbody>${rows.map(([l,v1,v2,d,p]) => {
-      const cls = d.startsWith('+') ? 'pos' : d.startsWith('-') ? 'neg' : '';
-      return `<tr><td>${l}</td><td>${v1}</td><td>${v2}</td><td class="${cls}">${d}</td><td class="${cls}">${p}</td></tr>`;
-    }).join('')}</tbody></table>
-    <h2>Interpretación automática</h2>
-    <ul>${c.interp.map(i=>`<li>${i.replace(/<\/?strong>/g,'')}</li>`).join('')}</ul>
-    </body></html>`;
-  const w = window.open('','_blank');
-  w.document.write(html);
-  w.document.close();
-  setTimeout(() => w.print(), 400);
-}
-
-function exportCmpExcel() {
-  const c = window._lastCmp;
-  if (!c) return;
-  const fmtMny = n => parseFloat(n||0).toFixed(2);
-  const sign   = d => d >= 0 ? '+' : '';
-  const pct    = (a,b) => a !== 0 ? sign(b-a)+((( b-a)/Math.abs(a))*100).toFixed(1)+'%' : (b!==0?'∞':'0%');
-  const header = ['Indicador', c.label1, c.label2, 'Diferencia', 'Variación %'];
-  const dataRows = c.rows.map(([lbl,v1,v2]) => {
-    const d = v2 - v1;
-    const isCount = Number.isInteger(v1) && v1 < 500 && Number.isInteger(v2);
-    const fmt = isCount ? v => String(v) : fmtMny;
-    return [lbl, fmt(v1), fmt(v2), (d>=0?'+':'')+fmt(d), pct(v1,v2)];
-  });
-  const interpRows = c.interp.map(i => [i.replace(/<\/?strong>/g,'')]);
-  const allRows = [header, ...dataRows, [], ['Interpretación automática'], ...interpRows];
-  const xml = `<?xml version="1.0"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
-    xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
-    <Worksheet ss:Name="Comparativo"><Table>
-    ${allRows.map(row => `<Row>${row.map(c=>`<Cell><Data ss:Type="String">${String(c??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</Data></Cell>`).join('')}</Row>`).join('')}
-    </Table></Worksheet></Workbook>`;
-  const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `comparativo-aldea-${today()}.xls`;
-  a.click();
 }
 
 // ===================== FULL REPORT =====================
@@ -7562,31 +7179,34 @@ function saveVacation() {
   const status = document.getElementById('vac-status').value;
   const notes = document.getElementById('vac-notes').value.trim();
   const alertEl = document.getElementById('vac-alerts');
-  if (!caretaker_id || !start_dt || !end_dt) { alertEl.innerHTML = '<div class="alert alert-danger">Todos los campos marcados son obligatorios.</div>'; return; }
+  const missing = [!caretaker_id&&'Cuidadora', !start_dt&&'Fecha de salida', !end_dt&&'Fecha de regreso'].filter(Boolean);
+  if (missing.length) { alertEl.innerHTML = `<div class="alert alert-danger">Falta completar: ${missing.join(', ')}.</div>`; return; }
   if (end_dt <= start_dt) { alertEl.innerHTML = '<div class="alert alert-danger">El regreso debe ser posterior a la salida.</div>'; return; }
   promptCaretakerPassword(caretaker_id, 'registrar vacaciones', () => {
-    const vacs = DB.vacations;
-    const obj = { caretaker_id, start_dt, end_dt, status, notes };
-    if (editingVacationId) {
-      const i = vacs.findIndex(x => x.id === editingVacationId);
-      vacs[i] = { ...vacs[i], ...obj };
-    } else {
-      vacs.push({ id: DB.nextId(vacs), ...obj });
-    }
-    DB.saveVacations(vacs);
-    _auditLog(caretaker_id, 'vacaciones', obj);
-    closeModal('modal-vacation');
-    renderCaretakersPage();
-    // Check if this vacation affects existing assignments
-    const savedVacId = editingVacationId || DB.vacations[DB.vacations.length-1]?.id;
-    const conflictAsgns = DB.assignments.filter(a =>
-      a.caretaker_id === caretaker_id &&
-      a.from_dt && a.to_dt &&
-      a.from_dt.slice(0,10) <= end_dt.slice(0,10) &&
-      a.to_dt.slice(0,10) >= start_dt.slice(0,10)
-    );
-    if (conflictAsgns.length) showVacationConflicts(savedVacId, conflictAsgns);
+    _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes);
   });
+}
+function _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes) {
+  const vacs = DB.vacations;
+  const obj = { caretaker_id, start_dt, end_dt, status, notes };
+  if (editingVacationId) {
+    const i = vacs.findIndex(x => x.id === editingVacationId);
+    vacs[i] = { ...vacs[i], ...obj };
+  } else {
+    vacs.push({ id: DB.nextId(vacs), ...obj });
+  }
+  DB.saveVacations(vacs);
+  _auditLog(caretaker_id, 'vacaciones', obj);
+  closeModal('modal-vacation');
+  renderCaretakersPage();
+  const savedVacId = editingVacationId || DB.vacations[DB.vacations.length-1]?.id;
+  const conflictAsgns = DB.assignments.filter(a =>
+    a.caretaker_id === caretaker_id &&
+    a.from_dt && a.to_dt &&
+    a.from_dt.slice(0,10) <= end_dt.slice(0,10) &&
+    a.to_dt.slice(0,10) >= start_dt.slice(0,10)
+  );
+  if (conflictAsgns.length) showVacationConflicts(savedVacId, conflictAsgns);
 }
 
 let _vacConflictAsgns = [];
@@ -7672,8 +7292,12 @@ let _vacConflictVacId = null;
 
 function deleteVacation(id) {
   if (!confirm('¿Eliminar este período vacacional?')) return;
-  DB.saveVacations(DB.vacations.filter(v => v.id !== id));
-  renderCaretakersPage();
+  const vac = DB.vacations.find(v => v.id === id);
+  if (!vac) return;
+  promptCaretakerPassword(vac.caretaker_id, 'eliminar vacaciones', () => {
+    DB.saveVacations(DB.vacations.filter(v => v.id !== id));
+    renderCaretakersPage();
+  });
 }
 
 // ---- Assignment change ----
@@ -8438,6 +8062,11 @@ function applyVacFilter(mode) {
   }
   document.getElementById('vac-filter-from').value = _vacFilter.from;
   document.getElementById('vac-filter-to').value   = _vacFilter.to;
+  ['all','month','week'].forEach(m => {
+    const btn = document.getElementById('vfb-'+m);
+    if (!btn) return;
+    btn.className = m === mode ? 'btn btn-primary btn-sm' : 'btn btn-secondary btn-sm';
+  });
   renderVacComparativo();
 }
 
@@ -8465,10 +8094,12 @@ function renderVacComparativo() {
   const totalHours = stats.reduce((s, x) => s + x.hours, 0);
   const sorted = [...stats].sort((a,b) => b.hours - a.hours);
 
+  const section = document.getElementById('vac-comparativo-section');
   if (totalHours === 0) {
-    el.innerHTML = '<div class="text-muted text-sm" style="padding:16px">Sin vacaciones en el período seleccionado.</div>';
+    el.innerHTML = '<div class="text-muted text-sm" style="padding:4px 0">Sin vacaciones en el período seleccionado.</div>';
     return;
   }
+  if (section) section.style.display = '';
 
   const COLORS = ['var(--teal)', 'var(--amber)', '#6366f1', '#ec4899', '#f97316', '#10b981', '#3b82f6', '#a855f7'];
 
@@ -8545,18 +8176,15 @@ function renderCaretakersVacations() {
     </div>` : ''}
 
     <!-- Comparativo -->
-    <div style="padding:16px;border-bottom:1px solid var(--border)">
+    <div id="vac-comparativo-section" style="padding:16px;border-bottom:1px solid var(--border)">
       <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px">Comparativo por cuidadora</div>
 
       <!-- Filter bar -->
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:16px">
-        <div style="display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px">
-          <button id="vfb-all" onclick="applyVacFilter('all')"
-            style="padding:5px 12px;background:var(--primary);color:#fff;border:none;cursor:pointer;font-size:12px">Todo</button>
-          <button id="vfb-month" onclick="applyVacFilter('month')"
-            style="padding:5px 12px;background:var(--bg-card);color:var(--text);border:none;border-left:1px solid var(--border);cursor:pointer;font-size:12px">Este mes</button>
-          <button id="vfb-week" onclick="applyVacFilter('week')"
-            style="padding:5px 12px;background:var(--bg-card);color:var(--text);border:none;border-left:1px solid var(--border);cursor:pointer;font-size:12px">Esta semana</button>
+        <div style="display:flex;gap:6px">
+          <button id="vfb-all" onclick="applyVacFilter('all')" class="btn btn-primary btn-sm">Todo</button>
+          <button id="vfb-month" onclick="applyVacFilter('month')" class="btn btn-secondary btn-sm">Este mes</button>
+          <button id="vfb-week" onclick="applyVacFilter('week')" class="btn btn-secondary btn-sm">Esta semana</button>
         </div>
         <div style="display:flex;align-items:center;gap:6px;font-size:12px">
           <input type="date" id="vac-filter-from" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-card);color:var(--text)" onchange="applyVacCustomFilter()">
