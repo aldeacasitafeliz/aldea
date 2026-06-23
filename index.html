@@ -6514,7 +6514,6 @@ function renderIncome() {
   const pendStays = allStaysGlobal.filter(s => getPendingAmount(s) > 0).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
   const pendRest  = allRestGlobal.filter(r => !r.paid).sort((a,b) => a.date.localeCompare(b.date));
   const pendResArr= DB.reservas.filter(r => r.status === 'pendiente' && Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)) > 0);
-  const invalidResArr = DB.reservas.filter(r => r.status === 'pendiente' && r.type === 'hospedaje' && !r.open_ended && r.check_out_date && r.reserved_from && r.check_out_date <= r.reserved_from);
 
   const pendItems = [];
   pendStays.forEach(s => {
@@ -6647,18 +6646,6 @@ function renderIncome() {
 
   // ── POTENCIALES ──
   pendHTML += secHeader('Pendientes de cobro potenciales (reservas)', potencialTotal, 'var(--blue-50)');
-  if (invalidResArr.length) {
-    pendHTML += invalidResArr.map(r => {
-      const dog = DB.getDog(r.dog_id);
-      return `<div style="border:1px solid var(--red-400);border-radius:var(--radius);margin-bottom:12px;padding:10px 14px;background:var(--red-50);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <div>
-          <strong>⚠️ Reserva con fechas inválidas:</strong> <strong>${dog?.name||'?'}</strong>
-          <span class="text-muted text-sm"> — salida (${fmtDate(r.check_out_date)}) es anterior o igual al ingreso (${fmtDate(r.reserved_from)})</span>
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="openReservaModal(${r.id})">✏️ Corregir reserva</button>
-      </div>`;
-    }).join('');
-  }
   if (pendResArr.length) {
     const resItems = [];
     pendResArr.forEach(r => {
