@@ -1048,6 +1048,14 @@ tr:hover td { background: var(--gray-50); }
             <option value="reserva">Reserva</option>
             <option value="incidencia">Incidencia</option>
             <option value="recojo">Recojo/Salida</option>
+            <option value="perro">Nuevo perro</option>
+            <option value="pago">Pago/Cobro</option>
+            <option value="conflicto">Conflicto</option>
+            <option value="integracion">Integración</option>
+            <option value="turno_alimentacion">Turno alimentación</option>
+            <option value="asignacion">Asignación cuidadora</option>
+            <option value="turno_telefono">Turno teléfono</option>
+            <option value="medicamento">Medicamento</option>
           </select>
           <select id="reg-filter-ct" style="width:160px">
             <option value="all">Todas las cuidadoras</option>
@@ -1402,6 +1410,10 @@ tr:hover td { background: var(--gray-50); }
       <div id="dog-assignments-list"><div class="text-muted text-sm" style="padding:12px 0">Sin asignaciones registradas.</div></div>
     </div>
 
+    <div id="dog-reg-ct-group" class="form-group" style="margin:0 0 12px 0">
+      <label>Cuidadora que registra *</label>
+      <select id="dog-reg-ct"><option value="">— Seleccionar —</option></select>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-dog')">Cancelar</button>
       <button class="btn btn-primary" onclick="saveDog()">Guardar perro</button>
@@ -1875,6 +1887,10 @@ tr:hover td { background: var(--gray-50); }
     <div id="payment-stay-info" style="background:var(--gray-50);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px"></div>
     <div id="pay-rows-container"></div>
     <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addPaymentRow()">+ Agregar pago</button>
+    <div class="form-group" style="margin-top:12px">
+      <label>Cuidadora que registra *</label>
+      <select id="pay-reg-ct"><option value="">— Seleccionar —</option></select>
+    </div>
     <div id="payment-history" style="margin-top:16px"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-payment')">Cerrar</button>
@@ -2129,8 +2145,8 @@ tr:hover td { background: var(--gray-50); }
           </div>
         </div>
         <div class="form-group">
-          <label>Registrado por</label>
-          <input type="text" id="asgn-user" placeholder="Nombre">
+          <label>Cuidadora que registra *</label>
+          <select id="asgn-reg-ct"><option value="">— Seleccionar —</option></select>
         </div>
         <div class="form-group">
           <label>Motivo / notas</label>
@@ -2179,6 +2195,10 @@ tr:hover td { background: var(--gray-50); }
         <label>Cuidadora responsable *</label>
         <select id="fd-caretaker"></select>
       </div>
+      <div class="form-group span2" id="fd-reg-ct-group">
+        <label>Cuidadora que registra *</label>
+        <select id="fd-reg-ct"><option value="">— Seleccionar —</option></select>
+      </div>
       <div class="form-group">
         <label>Nº de perros alimentados</label>
         <input type="number" id="fd-dog-count" min="0" placeholder="0">
@@ -2215,6 +2235,10 @@ tr:hover td { background: var(--gray-50); }
       <div class="form-group span2">
         <label>Cuidadora responsable *</label>
         <select id="ph-caretaker"></select>
+      </div>
+      <div class="form-group span2" id="ph-reg-ct-group">
+        <label>Cuidadora que registra *</label>
+        <select id="ph-reg-ct"><option value="">— Seleccionar —</option></select>
       </div>
       <div class="form-group span2">
         <label>Observaciones</label>
@@ -2310,6 +2334,10 @@ tr:hover td { background: var(--gray-50); }
       <div class="form-group span2">
         <label>Observaciones</label>
         <textarea id="conf-notes" rows="2" placeholder="Contexto adicional..."></textarea>
+      </div>
+      <div class="form-group span2" id="conf-reg-ct-group">
+        <label>Cuidadora que registra *</label>
+        <select id="conf-reg-ct"><option value="">— Seleccionar —</option></select>
       </div>
     </div>
     <div class="modal-footer">
@@ -2644,9 +2672,11 @@ function calcDaycareTotal(dc) {
 
 function getHostedDogs(date) {
   return DB.stays.filter(s => {
-    if (s.service_type !== 'hospedaje' || s.status === 'cancelado') return false;
+    if (s.service_type !== 'hospedaje' || s.status === 'cancelado' || s.status === 'finalizado') return false;
+    if (s.pickup_time) return false;
     if (s.open_ended) return s.check_in_date <= date;
-    return s.check_in_date <= date && s.check_out_date > date;
+    // Include overdue stays (checkout passed but no pickup confirmed)
+    return s.check_in_date <= date && (s.check_out_date > date || !s.pickup_time);
   });
 }
 function getOpenEndedStays() {
@@ -3142,9 +3172,14 @@ function saveDog() {
   alertEl.innerHTML = '';
 
   const owners = _dogOwners.map(o => ({ ...o, name: o.name.trim() })).filter(o => o.name);
+  const dogRegCt = !editingDogId ? parseInt(document.getElementById('dog-reg-ct').value) : null;
   if (!name || !owners.length) {
     alertEl.innerHTML = '<div class="alert alert-danger">El nombre del perro y al menos un contacto son obligatorios.</div>';
     switchDogTab('basico', document.querySelector('#modal-dog .tab-btn'));
+    return;
+  }
+  if (!editingDogId && !dogRegCt) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
     return;
   }
   // Duplicate name check (only on new dogs)
@@ -3176,7 +3211,7 @@ function saveDog() {
     const incomplete = !sex || !size || !behavior;
     dogs.push({ id: DB.nextId(dogs), name, owners, owner_last_name: primary.name, sex, size,
       behavior_primary: behavior, aggression_target: aggression, behavior_notes: notes,
-      incomplete, created_at: today(), ...careData });
+      incomplete, created_at: today(), registered_by_ct_id: dogRegCt, ...careData });
   }
   DB.saveDogs(dogs);
   const savedDogId = editingDogId || dogs[dogs.length - 1].id;
@@ -3210,6 +3245,9 @@ function openNewDog() {
   renderOwnersUI();
   renderMedsUI();
   renderAllergiesUI();
+  populateRegCtSelect('dog-reg-ct');
+  document.getElementById('dog-reg-ct').value = '';
+  document.getElementById('dog-reg-ct-group').style.display = '';
   switchDogTab('basico', document.querySelector('#modal-dog .tab-btn'));
   openModal('modal-dog');
 }
@@ -3252,6 +3290,7 @@ function openEditDog(id) {
 
   renderDogConflictsTab(id);
   renderDogIncidentsTab(id);
+  document.getElementById('dog-reg-ct-group').style.display = 'none';
   openModal('modal-dog');
 }
 
@@ -3494,12 +3533,16 @@ function openConflictModal(id) {
     document.getElementById('conf-reason').value = c.reason;
     document.getElementById('conf-date').value = c.date;
     document.getElementById('conf-notes').value = c.notes || '';
+    document.getElementById('conf-reg-ct-group').style.display = 'none';
   } else {
     document.getElementById('conf-dog-a').value = '';
     document.getElementById('conf-dog-b').value = '';
     document.getElementById('conf-reason').value = '';
     document.getElementById('conf-date').value = today();
     document.getElementById('conf-notes').value = '';
+    populateRegCtSelect('conf-reg-ct');
+    document.getElementById('conf-reg-ct').value = '';
+    document.getElementById('conf-reg-ct-group').style.display = '';
   }
   openModal('modal-conflict');
 }
@@ -3516,6 +3559,9 @@ function openConflictFromDog() {
   document.getElementById('conf-reason').value = '';
   document.getElementById('conf-date').value = today();
   document.getElementById('conf-notes').value = '';
+  populateRegCtSelect('conf-reg-ct');
+  document.getElementById('conf-reg-ct').value = '';
+  document.getElementById('conf-reg-ct-group').style.display = '';
   openModal('modal-conflict');
 }
 
@@ -3543,12 +3589,17 @@ function saveConflict() {
   const alertEl = document.getElementById('conflict-alerts');
   alertEl.innerHTML = '';
 
+  const confRegCt = !editingConflictId ? parseInt(document.getElementById('conf-reg-ct').value) : null;
   if (!dogA || !dogB || !reason) {
     alertEl.innerHTML = '<div class="alert alert-danger">Selecciona ambos perros e ingresa el motivo.</div>';
     return;
   }
   if (dogA === dogB) {
     alertEl.innerHTML = '<div class="alert alert-danger">Los perros deben ser distintos.</div>';
+    return;
+  }
+  if (!editingConflictId && !confRegCt) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
     return;
   }
 
@@ -3564,7 +3615,7 @@ function saveConflict() {
       alertEl.innerHTML = '<div class="alert alert-warn">Ya existe un conflicto registrado entre estos dos perros.</div>';
       return;
     }
-    conflicts.push({ id: DB.nextId(conflicts), origin: 'manual', ...obj });
+    conflicts.push({ id: DB.nextId(conflicts), origin: 'manual', registered_by_ct_id: confRegCt, ...obj });
   }
   DB.saveConflicts(conflicts);
   closeModal('modal-conflict');
@@ -5060,6 +5111,8 @@ function openPaymentModal(stayId) {
   _payRowCount = 0;
   document.getElementById('pay-rows-container').innerHTML = '';
   addPaymentRow();
+  populateRegCtSelect('pay-reg-ct');
+  document.getElementById('pay-reg-ct').value = '';
   _refreshPaymentInfo();
   renderPaymentHistory(stayId);
   openModal('modal-payment');
@@ -5122,6 +5175,8 @@ function renderPaymentHistory(stayId) {
 }
 
 function savePayments() {
+  const payRegCt = parseInt(document.getElementById('pay-reg-ct').value);
+  if (!payRegCt) { alert('Seleccioná la cuidadora que registra.'); return; }
   const rows = document.querySelectorAll('#pay-rows-container > div[id^="pay-row-"]');
   const toSave = [];
   let hasError = false;
@@ -5135,7 +5190,7 @@ function savePayments() {
   if (hasError) { alert('Revisá que todos los pagos tengan monto y fecha válidos.'); return; }
   if (!toSave.length) { closeModal('modal-payment'); return; }
   const payments = DB.payments;
-  toSave.forEach(p => payments.push({ id: DB.nextId(payments), stay_id: paymentStayId, ...p }));
+  toSave.forEach(p => payments.push({ id: DB.nextId(payments), stay_id: paymentStayId, registered_by_ct_id: payRegCt, ...p }));
   DB.savePayments(payments);
   openPaymentModal(paymentStayId);
   renderStaysTable();
@@ -5167,7 +5222,7 @@ function renderStaysTable() {
   const allStays = DB.stays.sort((a,b) => b.check_in_date.localeCompare(a.check_in_date));
   const d = today();
   const stays = _staysActiveTab === 'activos'
-    ? allStays.filter(s => s.status !== 'cancelado' && s.status !== 'finalizado' && !s.pickup_time && (s.open_ended || !s.check_out_date || s.check_out_date >= d))
+    ? allStays.filter(s => s.status !== 'cancelado' && s.status !== 'finalizado' && !s.pickup_time && s.check_in_date <= d)
     : allStays;
   const el = document.getElementById('stays-table-wrap');
   if (!stays.length) {
@@ -5186,10 +5241,14 @@ function renderStaysTable() {
       const paid = getPaidAmount(s.id);
       const pending = getPendingAmount(s);
       const pendingColor = pending > 0 ? 'color:var(--red-800);font-weight:600' : 'color:var(--green-800)';
-      return `<tr${s.open_ended ? ' style="background:var(--amber-50)"' : ''}>
+      const isOverdue = !s.open_ended && s.check_out_date && s.check_out_date < d;
+      const overdueDays = isOverdue ? dateDiff(s.check_out_date, d) : 0;
+      const overdueLabel = isOverdue ? (overdueDays === 0 ? 'hoy' : overdueDays === 1 ? 'ayer' : `hace ${overdueDays} días`) : '';
+      return `<tr${isOverdue ? ' style="background:var(--red-50,#fef2f2)"' : s.open_ended ? ' style="background:var(--amber-50)"' : ''}>
         <td>
           <strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
           ${s.open_ended?'<span class="chip" style="background:var(--amber-100);color:var(--amber-900)">🔓 sin fecha</span>':''}
+          ${isOverdue?`<span class="chip" style="background:var(--red-100,#fee2e2);color:var(--red-800,#991b1b)">⚠ Salida pendiente — debió salir ${overdueLabel}</span>`:''}
           ${s.is_exchange?'<span class="chip">canje</span>':''}${s.late_pickup?'<span class="chip">tarde</span>':''}
           ${s.discount_pct>0?`<span class="chip" style="background:var(--amber-50);color:var(--amber-800)">-${s.discount_pct}%</span>`:''}
         </td>
@@ -5685,8 +5744,9 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
     ? `<span class="dicon teal" title="Cuidadora: ${caretaker.name}${vacWarnDate?' · Sale de vacaciones '+vacWarnDate:''}">👩 ${caretaker.name}${vacWarnDate?' ⚠️':''}</span>`
     : `<span class="dicon neutral" title="Sin cuidadora asignada">👩 —</span>`;
 
+  const isOverdueCard = !stay?.open_ended && checkoutStr && checkoutStr < date;
   const checkoutIcon = checkoutStr
-    ? `<span class="dicon ${checkoutStr===date?'warn':'neutral'}" title="Sale: ${fmtDate(checkoutStr)}">📅 ${fmtDate(checkoutStr)}</span>` : '';
+    ? `<span class="dicon ${isOverdueCard?'danger':checkoutStr===date?'warn':'neutral'}" title="${isOverdueCard?'⚠ Salida vencida — ':''}Sale: ${fmtDate(checkoutStr)}">${isOverdueCard?'⚠ ':''}📅 ${fmtDate(checkoutStr)}</span>` : '';
 
   const phoneTitle = owners.map(o => `${o.name}${o.phone?' · '+o.phone:''}${o.relation?' ('+o.relation+')':''}`).join(' | ');
   const phoneIcon = primary?.phone
@@ -5697,6 +5757,7 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
   // Mobile: clean vertical card
   if (window.innerWidth <= 768) {
     const alertBadges = [
+      isOverdueCard ? `<span style="background:var(--red-100,#fee2e2);color:var(--red-800,#991b1b);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">⚠ Salida vencida ${fmtDate(checkoutStr)}</span>` : '',
       meds.length ? `<span style="background:var(--amber-50);color:var(--amber-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">💊 ${meds.length} med${meds.length>1?'s':''}</span>` : '',
       allergies.length ? `<span style="background:var(--red-50);color:var(--red-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">🚫 Alergias</span>` : '',
       conflicts.length ? `<span style="background:var(--amber-50);color:var(--amber-800);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:500">⚡ ${conflicts.length} conflicto${conflicts.length>1?'s':''}</span>` : '',
@@ -7988,7 +8049,7 @@ function prefillAsgnEdit(asgnId) {
   document.getElementById('asgn-new-ct').value = a.caretaker_id;
   writeDT('asgn-from-dt', a.from_dt || '');
   writeDT('asgn-to-dt', a.to_dt || '');
-  document.getElementById('asgn-user').value = a.user || '';
+  if (a.registered_by_ct_id) document.getElementById('asgn-reg-ct').value = a.registered_by_ct_id;
   document.getElementById('asgn-reason').value = a.notes || '';
   document.getElementById('asgn-form-title').textContent = 'Editar período existente';
   document.getElementById('asgn-save-btn').textContent = 'Actualizar período';
@@ -8027,7 +8088,8 @@ function openAssignmentChangeModal(refId, type) {
   document.getElementById('asgn-info').innerHTML =
     `${type==='hospedaje'?'🏠 Hospedaje':'☀️ Daycare'} · ${fmtDate(bounds.from)} → ${bounds.open_ended ? '<strong style="color:var(--green-700)">sin fecha de salida (indefinida)</strong>' : fmtDate(bounds.to)}`;
   document.getElementById('asgn-alerts').innerHTML = '';
-  document.getElementById('asgn-user').value = '';
+  populateRegCtSelect('asgn-reg-ct');
+  document.getElementById('asgn-reg-ct').value = '';
   document.getElementById('asgn-reason').value = '';
   document.getElementById('asgn-form-title').textContent = 'Agregar período';
   document.getElementById('asgn-save-btn').textContent = 'Guardar período';
@@ -8069,11 +8131,12 @@ function saveAssignmentChange() {
   const fromDt = readDT('asgn-from-dt');
   const toDateRaw = document.getElementById('asgn-to-dt-date')?.value;
   const toDt = (!toDateRaw) ? (OPEN_ENDED_DATE + 'T23:59') : readDT('asgn-to-dt');
-  const user    = document.getElementById('asgn-user').value.trim();
+  const asgnRegCtId = parseInt(document.getElementById('asgn-reg-ct').value);
   const notes   = document.getElementById('asgn-reason').value.trim();
   const alertEl = document.getElementById('asgn-alerts');
 
   if (!newCtId)  { alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná una cuidadora.</div>'; return; }
+  if (!asgnRegCtId) { alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>'; return; }
   if (!fromDt || !toDt) { alertEl.innerHTML = '<div class="alert alert-danger">Las fechas son obligatorias.</div>'; return; }
   if (toDt <= fromDt)   { alertEl.innerHTML = '<div class="alert alert-danger">La fecha de fin debe ser posterior al inicio.</div>'; return; }
 
@@ -8118,12 +8181,12 @@ function saveAssignmentChange() {
         const old = asgns[idx];
         const changed = old.caretaker_id !== newCtId || old.from_dt !== fromDt || old.to_dt !== toDt;
         if (changed) {
-          old.change_log = [...(old.change_log||[]), { from_id: old.caretaker_id, to_id: newCtId, prev_from: old.from_dt, prev_to: old.to_dt, date: nowStr(), user, reason: notes }];
+          old.change_log = [...(old.change_log||[]), { from_id: old.caretaker_id, to_id: newCtId, prev_from: old.from_dt, prev_to: old.to_dt, date: nowStr(), registered_by_ct_id: asgnRegCtId, reason: notes }];
         }
-        asgns[idx] = { ...old, caretaker_id: newCtId, from_dt: fromDt, to_dt: toDt, user, notes };
+        asgns[idx] = { ...old, caretaker_id: newCtId, from_dt: fromDt, to_dt: toDt, registered_by_ct_id: asgnRegCtId, notes };
       }
     } else {
-      asgns.push({ id: DB.nextId(asgns), dog_id: _asgnDogId, caretaker_id: newCtId, service_type: _asgnType, ref_id: _asgnRefId, from_dt: fromDt, to_dt: toDt, mode: 'parcial', user, notes, change_log: [] });
+      asgns.push({ id: DB.nextId(asgns), dog_id: _asgnDogId, caretaker_id: newCtId, service_type: _asgnType, ref_id: _asgnRefId, from_dt: fromDt, to_dt: toDt, mode: 'parcial', registered_by_ct_id: asgnRegCtId, notes, change_log: [] });
     }
     DB.saveAssignments(asgns);
     _auditLog(newCtId, isReassign ? 'reasignacion' : 'asignacion', { fromDt, toDt, ref_id: _asgnRefId, type: _asgnType });
@@ -8171,12 +8234,16 @@ function openFeedingModal(id, prefillDate, prefillShift) {
     document.getElementById('fd-dog-count').value = f.dog_count || '';
     document.getElementById('fd-confirmed').value = f.confirmed ? 'si' : 'no';
     document.getElementById('fd-notes').value = f.notes || '';
+    document.getElementById('fd-reg-ct-group').style.display = 'none';
   } else {
     document.getElementById('fd-shift-date').value = prefillDate || today();
     document.getElementById('fd-shift-num').value = prefillShift || '1';
     document.getElementById('fd-dog-count').value = getPresentDogs(prefillDate||today()).length || '';
     document.getElementById('fd-confirmed').value = 'no';
     document.getElementById('fd-notes').value = '';
+    populateRegCtSelect('fd-reg-ct');
+    document.getElementById('fd-reg-ct').value = '';
+    document.getElementById('fd-reg-ct-group').style.display = '';
   }
   openModal('modal-feeding');
 }
@@ -8190,6 +8257,8 @@ function saveFeedingShift() {
   const notes = document.getElementById('fd-notes').value.trim();
   const alertEl = document.getElementById('fd-alerts');
   if (!date || !caretaker_id) { alertEl.innerHTML = '<div class="alert alert-danger">Fecha y cuidadora son obligatorios.</div>'; return; }
+  const fdRegCt = !editingFeedingId ? parseInt(document.getElementById('fd-reg-ct').value) : null;
+  if (!editingFeedingId && !fdRegCt) { alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>'; return; }
   if (isCaretakerOnVacation(caretaker_id, date)) {
     alertEl.innerHTML = '<div class="alert alert-danger">⚠️ Esta cuidadora está de vacaciones en esa fecha.</div>';
     return;
@@ -8205,7 +8274,7 @@ function saveFeedingShift() {
       const i = shifts.findIndex(x => x.id === editingFeedingId);
       shifts[i] = { ...shifts[i], ...obj };
     } else {
-      shifts.push({ id: DB.nextId(shifts), ...obj });
+      shifts.push({ id: DB.nextId(shifts), registered_by_ct_id: fdRegCt, ...obj });
     }
     DB.saveFeedingShifts(shifts);
     _auditLog(caretaker_id, feedingReassign ? 'reasignacion_turno_alimentacion' : 'turno_alimentacion', obj);
@@ -8240,12 +8309,16 @@ function openPhoneModal(id, prefillDate) {
     document.getElementById('ph-shift-date').value = p.date;
     sel.value = p.caretaker_id;
     document.getElementById('ph-notes').value = p.notes || '';
+    document.getElementById('ph-reg-ct-group').style.display = 'none';
   } else {
     document.getElementById('ph-shift-date').value = prefillDate || today();
     document.getElementById('ph-notes').value = '';
     // Suggest next caretaker in cycle
     const suggested = suggestNextPhoneCaretaker();
     if (suggested) sel.value = suggested;
+    populateRegCtSelect('ph-reg-ct');
+    document.getElementById('ph-reg-ct').value = '';
+    document.getElementById('ph-reg-ct-group').style.display = '';
   }
   openModal('modal-phone');
 }
@@ -8265,6 +8338,8 @@ function savePhoneShift() {
   const notes = document.getElementById('ph-notes').value.trim();
   const alertEl = document.getElementById('ph-alerts');
   if (!date || !caretaker_id) { alertEl.innerHTML = '<div class="alert alert-danger">Fecha y cuidadora son obligatorios.</div>'; return; }
+  const phRegCt = !editingPhoneId ? parseInt(document.getElementById('ph-reg-ct').value) : null;
+  if (!editingPhoneId && !phRegCt) { alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>'; return; }
   if (isCaretakerOnVacation(caretaker_id, date)) {
     alertEl.innerHTML = '<div class="alert alert-danger">⚠️ Esta cuidadora está de vacaciones en esa fecha.</div>';
     return;
@@ -8279,7 +8354,7 @@ function savePhoneShift() {
       const i = shifts.findIndex(x => x.id === editingPhoneId);
       shifts[i] = { ...shifts[i], ...obj };
     } else {
-      shifts.push({ id: DB.nextId(shifts), ...obj });
+      shifts.push({ id: DB.nextId(shifts), registered_by_ct_id: phRegCt, ...obj });
     }
     DB.savePhoneShifts(shifts);
     _auditLog(caretaker_id, phoneReassign ? 'reasignacion_turno_telefono' : 'turno_telefono', obj);
@@ -8472,11 +8547,27 @@ function renderRegistrosStats() {
     DB.incidents.forEach(i => { if (i.registered_by_ct_id && inRange(i.date)) allRecords.push({ type: 'incidencia', ct_id: i.registered_by_ct_id, date: i.date }); });
   if (typeFilter === 'all' || typeFilter === 'recojo')
     DB.stays.forEach(s => { if (s.registered_by_ct_id && s.pickup_time && inRange(s.check_out_date || t)) allRecords.push({ type: 'recojo', ct_id: s.registered_by_ct_id, date: s.check_out_date || t }); });
+  if (typeFilter === 'all' || typeFilter === 'perro')
+    DB.dogs.forEach(d => { if (d.registered_by_ct_id && inRange(d.created_at?.slice(0,10) || t)) allRecords.push({ type: 'perro', ct_id: d.registered_by_ct_id, date: d.created_at?.slice(0,10) || t }); });
+  if (typeFilter === 'all' || typeFilter === 'pago')
+    DB.payments.forEach(p => { if (p.registered_by_ct_id && inRange(p.date)) allRecords.push({ type: 'pago', ct_id: p.registered_by_ct_id, date: p.date }); });
+  if (typeFilter === 'all' || typeFilter === 'conflicto')
+    DB.conflicts.forEach(c => { if (c.registered_by_ct_id && inRange(c.date)) allRecords.push({ type: 'conflicto', ct_id: c.registered_by_ct_id, date: c.date }); });
+  if (typeFilter === 'all' || typeFilter === 'integracion')
+    DB.integrations.forEach(i => { if (i.registered_by_ct_id && inRange(i.date)) allRecords.push({ type: 'integracion', ct_id: i.registered_by_ct_id, date: i.date }); });
+  if (typeFilter === 'all' || typeFilter === 'turno_alimentacion')
+    DB.feedingShifts.forEach(f => { if (f.registered_by_ct_id && inRange(f.date)) allRecords.push({ type: 'turno_alimentacion', ct_id: f.registered_by_ct_id, date: f.date }); });
+  if (typeFilter === 'all' || typeFilter === 'asignacion')
+    DB.assignments.forEach(a => { if (a.registered_by_ct_id && inRange(a.from_dt?.slice(0,10) || t)) allRecords.push({ type: 'asignacion', ct_id: a.registered_by_ct_id, date: a.from_dt?.slice(0,10) || t }); });
+  if (typeFilter === 'all' || typeFilter === 'turno_telefono')
+    DB.phoneShifts.forEach(p => { if (p.registered_by_ct_id && inRange(p.date)) allRecords.push({ type: 'turno_telefono', ct_id: p.registered_by_ct_id, date: p.date }); });
+  if (typeFilter === 'all' || typeFilter === 'medicamento')
+    DB_medLogs.all.forEach(m => { if (m.registered_by_ct_id && inRange(m.date)) allRecords.push({ type: 'medicamento', ct_id: m.registered_by_ct_id, date: m.date }); });
 
   const filtered = ctFilter === 'all' ? allRecords : allRecords.filter(r => r.ct_id == ctFilter);
   const total = filtered.length;
 
-  const byType = { hospedaje:0, daycare:0, restaurante:0, reserva:0, incidencia:0, recojo:0 };
+  const byType = { hospedaje:0, daycare:0, restaurante:0, reserva:0, incidencia:0, recojo:0, perro:0, pago:0, conflicto:0, integracion:0, turno_alimentacion:0, asignacion:0, turno_telefono:0, medicamento:0 };
   const byCt = {};
   filtered.forEach(r => {
     byType[r.type] = (byType[r.type] || 0) + 1;
@@ -8488,7 +8579,7 @@ function renderRegistrosStats() {
   const el = document.getElementById('ct-registros-wrap');
   if (!total) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>No hay registros para el período seleccionado.</p></div>'; return; }
 
-  const typeLabels = { hospedaje:'Hospedaje', daycare:'Daycare', restaurante:'Restaurante', reserva:'Reserva', incidencia:'Incidencia', recojo:'Recojo' };
+  const typeLabels = { hospedaje:'Hospedaje', daycare:'Daycare', restaurante:'Restaurante', reserva:'Reserva', incidencia:'Incidencia', recojo:'Recojo', perro:'Nuevo perro', pago:'Pago', conflicto:'Conflicto', integracion:'Integración', turno_alimentacion:'Turno alim.', asignacion:'Asignación', turno_telefono:'Turno tel.', medicamento:'Medicamento' };
   const rows = Object.entries(byCt).sort((a,b) => b[1].total - a[1].total).map(([ctId, data]) => {
     const ct = DB.caretakers.find(c => c.id == ctId);
     const pct = total > 0 ? ((data.total / total) * 100).toFixed(0) : 0;
@@ -9119,17 +9210,36 @@ function getMedLog(dogId, medName, medTime, date) {
   const key = getMedLogKey(dogId, medName, medTime, date);
   return DB_medLogs.all.find(l => l.key === key);
 }
-function markMedAdministered(dogId, medName, medTime, date) {
+let _pendingMedConfirm = null;
+function confirmMedAdministered(dogId, medName, medTime, date) {
+  _pendingMedConfirm = { dogId, medName, medTime, date };
+  const dog = DB.getDog(dogId);
+  document.getElementById('med-confirm-info').innerHTML =
+    `<strong>${dog?.name||'?'}</strong> · ${medName}${medTime?' ('+medTime+')':''} · ${fmtDate(date)}`;
+  populateRegCtSelect('med-confirm-reg-ct');
+  document.getElementById('med-confirm-reg-ct').value = '';
+  openModal('modal-med-confirm');
+}
+function confirmMedAdministeredSubmit() {
+  const regCtId = parseInt(document.getElementById('med-confirm-reg-ct').value);
+  if (!regCtId) { alert('Seleccioná la cuidadora que administra.'); return; }
+  if (!_pendingMedConfirm) return;
+  const { dogId, medName, medTime, date } = _pendingMedConfirm;
   const key = getMedLogKey(dogId, medName, medTime, date);
   const logs = DB_medLogs.all;
   const existing = logs.findIndex(l => l.key === key);
   const entry = { key, dogId, medName, medTime, date, administered: true,
-    administered_at: new Date().toISOString(), confirmed_by: '' };
+    administered_at: new Date().toISOString(), registered_by_ct_id: regCtId };
   if (existing >= 0) logs[existing] = { ...logs[existing], ...entry };
   else logs.push(entry);
   DB_medLogs.save(logs);
+  _pendingMedConfirm = null;
+  closeModal('modal-med-confirm');
   renderMedsPage();
   updateMedsAlertDot();
+}
+function markMedAdministered(dogId, medName, medTime, date) {
+  confirmMedAdministered(dogId, medName, medTime, date);
 }
 function unmarkMedAdministered(dogId, medName, medTime, date) {
   const key = getMedLogKey(dogId, medName, medTime, date);
@@ -11617,6 +11727,13 @@ function openIntegrationModal(id) {
       <span style="font-size:14px;font-weight:500">${c.name}</span>
     </label>`
   ).join('');
+  if (id) {
+    document.getElementById('integ-reg-ct-group').style.display = 'none';
+  } else {
+    populateRegCtSelect('integ-reg-ct');
+    document.getElementById('integ-reg-ct').value = '';
+    document.getElementById('integ-reg-ct-group').style.display = '';
+  }
   openModal('modal-integration');
   _integWizardStep = 1;
   _renderIntegWizard();
@@ -11640,6 +11757,10 @@ function saveIntegration() {
   const dogName = document.getElementById('integ-dog-name').value.trim();
   const date = document.getElementById('integ-date').value;
   if (!dogName || !date) { alerts.innerHTML = '<div class="alert alert-danger">Nombre del perro y fecha son obligatorios.</div>'; return; }
+  if (!_editingIntegId) {
+    const integRegCt = parseInt(document.getElementById('integ-reg-ct').value);
+    if (!integRegCt) { alerts.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>'; return; }
+  }
   const newCtIds = Array.from(document.querySelectorAll('#integ-caretakers input[type=checkbox]:checked')).map(c => parseInt(c.value));
 
   // If editing and caretakers changed, require password of each affected caretaker
@@ -11682,6 +11803,7 @@ function _doSaveIntegration(ctIds) {
   } else {
     obj.id = DB.nextId(arr);
     obj.created_at = new Date().toISOString();
+    obj.registered_by_ct_id = parseInt(document.getElementById('integ-reg-ct').value) || null;
     arr.push(obj);
   }
   DB.saveIntegrations(arr);
@@ -12087,6 +12209,10 @@ function deleteIntegration(id) {
         <label>Observaciones</label>
         <textarea id="integ-notes" class="form-control" rows="3" placeholder="Notas sobre la integración…"></textarea>
       </div>
+      <div class="form-group" id="integ-reg-ct-group">
+        <label>Cuidadora que registra *</label>
+        <select id="integ-reg-ct"><option value="">— Seleccionar —</option></select>
+      </div>
     </div>
     <!-- Footer desktop -->
     <div class="modal-footer desktop-only">
@@ -12099,6 +12225,22 @@ function deleteIntegration(id) {
       <button class="btn btn-secondary" onclick="closeModal('modal-integration')">Cancelar</button>
       <button class="btn btn-primary" id="integ-wizard-next" onclick="_integWizardStep++;_renderIntegWizard()">Siguiente →</button>
       <button class="btn btn-primary" id="integ-wizard-save" style="display:none" onclick="saveIntegration()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal confirmación medicamento -->
+<div class="modal-overlay" id="modal-med-confirm">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">Confirmar administración de medicamento</div>
+    <div id="med-confirm-info" style="background:var(--gray-50);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div class="form-group">
+      <label>Cuidadora que administra *</label>
+      <select id="med-confirm-reg-ct"><option value="">— Seleccionar —</option></select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-med-confirm')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmMedAdministeredSubmit()">Confirmar</button>
     </div>
   </div>
 </div>
