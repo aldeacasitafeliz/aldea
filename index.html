@@ -5794,9 +5794,12 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
     const behavLabels = { 'fácil':'😊 Fácil','juguetón':'🎾 Juguetón','ladrador':'📢 Ladrador','agresivo':'⚠️ Agresivo' };
     const sizeLabels = { 'pequeño':'S','mediano':'M','grande':'G' };
 
-    return `<div class="dog-daily-card ${sectionCls}" style="display:block;padding:14px 16px;margin-bottom:10px;border-radius:12px;cursor:pointer" onclick="viewDog(${dog.id})">
+    const overdueDaysMob = isOverdueCard ? dateDiff(checkoutStr, date) : 0;
+    const overdueTextMob = isOverdueCard ? (overdueDaysMob === 0 ? 'hoy' : overdueDaysMob === 1 ? 'ayer' : `hace ${overdueDaysMob} días`) : '';
+    return `<div class="dog-daily-card ${sectionCls}" style="display:block;padding:14px 16px;margin-bottom:10px;border-radius:12px;cursor:pointer;${isOverdueCard?'background:var(--red-50,#fef2f2);border:1.5px solid var(--red-300,#fca5a5);':''}" onclick="viewDog(${dog.id})">
+      ${isOverdueCard ? `<div style="background:var(--red-600,#dc2626);color:#fff;font-size:12px;font-weight:700;padding:5px 12px;border-radius:7px;margin-bottom:10px;letter-spacing:0.02em">⚠ SALIDA VENCIDA — debió salir ${overdueTextMob} (${fmtDate(checkoutStr)})</div>` : ''}
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--green-100);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--green-800);flex-shrink:0;font-size:13px">${num}</div>
+        <div style="width:28px;height:28px;border-radius:50%;background:${isOverdueCard?'var(--red-100,#fee2e2)':'var(--green-100)'};display:flex;align-items:center;justify-content:center;font-weight:700;color:${isOverdueCard?'var(--red-800,#991b1b)':'var(--green-800)'};flex-shrink:0;font-size:13px">${num}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.2">${dog.name}</div>
           <div style="font-size:13px;color:var(--text-muted);margin-top:2px">${ownerLabel}${dog.sex?' · '+(dog.sex==='macho'?'♂':'♀'):''}${dog.size?' · '+sizeLabels[dog.size]:''}${dog.behavior_primary?' · '+(behavLabels[dog.behavior_primary]||dog.behavior_primary):''}</div>
