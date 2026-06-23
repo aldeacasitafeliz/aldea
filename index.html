@@ -1200,23 +1200,12 @@ tr:hover td { background: var(--gray-50); }
           </div>
         </div>
 
-        <!-- Preview -->
-        <div class="card" style="padding:18px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
-            <div style="font-weight:600;font-size:14px">Vista previa</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-              <button id="prev-btn-all"   class="btn btn-secondary btn-sm" onclick="setExportPeriod('all')">Todo</button>
-              <button id="prev-btn-month" class="btn btn-secondary btn-sm" onclick="setExportPeriod('month')">Este mes</button>
-              <button id="prev-btn-week"  class="btn btn-secondary btn-sm" onclick="setExportPeriod('week')">Esta semana</button>
-              <button id="prev-btn-today" class="btn btn-secondary btn-sm" onclick="setExportPeriod('today')">Hoy</button>
-              <span style="color:var(--border-md);font-size:16px">|</span>
-              <input type="date" id="prev-from" class="form-control" style="height:30px;width:140px;font-size:12px" onchange="syncPreviewRange()">
-              <span style="color:var(--text-muted);font-size:12px">—</span>
-              <input type="date" id="prev-to" class="form-control" style="height:30px;width:140px;font-size:12px" onchange="syncPreviewRange()">
-            </div>
-          </div>
-          <div id="export-period-label" style="font-size:12px;color:var(--text-muted);margin-bottom:10px"></div>
-          <div id="export-preview"></div>
+        <!-- Hidden elements kept for JS compatibility -->
+        <div style="display:none">
+          <input type="date" id="prev-from"><input type="date" id="prev-to">
+          <div id="export-period-label"></div><div id="export-preview"></div>
+          <button id="prev-btn-all"></button><button id="prev-btn-month"></button>
+          <button id="prev-btn-week"></button><button id="prev-btn-today"></button>
         </div>
       </div>
     </div>
@@ -6512,11 +6501,29 @@ function renderReport() {
   const byDow = Array.from({length:7},(_,i)=>({sum:0,cnt:0}));
   dailyData.forEach(d=>{ byDow[d.dow].sum+=d.B.n; byDow[d.dow].cnt++; });
 
-  // Top 10 clientes
-  const clientMap = {};
-  allStays.forEach(s=>{ const k=DB.getDog(s.dog_id)?.owner_last_name||'?'; clientMap[k]=(clientMap[k]||0)+calcStayTotal(s); });
-  allDcs.forEach(d=>{ const k=DB.getDog(d.dog_id)?.owner_last_name||'?'; clientMap[k]=(clientMap[k]||0)+calcDaycareTotal(d); });
-  const top10 = Object.entries(clientMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  // Top 10 clientes — solo pagos efectivamente recibidos dentro del período
+  const clientPayDetails = {}; // key: owner_last_name → [{date, concept, amount}]
+  DB.payments.filter(p => p.date >= start && p.date <= end && p.amount > 0).forEach(p => {
+    const stay = DB.stays.find(s => s.id === p.stay_id);
+    if (!stay) return;
+    const dog = DB.getDog(stay.dog_id);
+    const k = dog?.owner_last_name || '?';
+    if (!clientPayDetails[k]) clientPayDetails[k] = [];
+    clientPayDetails[k].push({ date: p.date, concept: `Pago hospedaje — ${dog?.name||'?'}`, amount: parseFloat(p.amount) });
+  });
+  allDcs.forEach(d => {
+    const dog = DB.getDog(d.dog_id);
+    const k = dog?.owner_last_name || '?';
+    const paid = calcDaycareTotal(d);
+    if (paid > 0) {
+      if (!clientPayDetails[k]) clientPayDetails[k] = [];
+      clientPayDetails[k].push({ date: d.date, concept: `Daycare — ${dog?.name||'?'}`, amount: paid });
+    }
+  });
+  const clientPaidMap = {};
+  Object.entries(clientPayDetails).forEach(([k, pays]) => { clientPaidMap[k] = pays.reduce((s,p)=>s+p.amount,0); });
+  const top10 = Object.entries(clientPaidMap).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  window._reportClientPays = clientPayDetails;
 
   // Indicadores
   const uniqueDogIds = [...new Set([...allStays.map(s=>s.dog_id),...allDcs.map(d=>d.dog_id)])];
@@ -6624,98 +6631,35 @@ function renderReport() {
 
   ${sep('4) Machos y hembras — presentes durante el día')}
   <div style="${blockStyle}">
-  ${reportTable(['Fecha','Machos','Hembras','Total'],
-    dailyData.map(d=>rTr([fmtDate(d.date),d.A.males,d.A.females,d.A.n]))
-  )}
+  ${(()=>{ const pct=(v,t)=>t?(v/t*100).toFixed(0)+'%':'—'; const tM=dailyData.reduce((s,d)=>s+d.A.males,0),tF=dailyData.reduce((s,d)=>s+d.A.females,0),tN=dailyData.reduce((s,d)=>s+d.A.n,0); return reportTable(['Fecha','Machos','Hembras','Total','% Machos','% Hembras'], dailyData.map(d=>rTr([fmtDate(d.date),d.A.males,d.A.females,d.A.n,pct(d.A.males,d.A.n),pct(d.A.females,d.A.n)])), ['CONSOLIDADO',tM,tF,tN,pct(tM,tN),pct(tF,tN)]); })()}
   </div>
   <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Machos y hembras — se quedan a dormir</div>
   <div style="${blockStyle}">
-  ${reportTable(['Fecha','Machos','Hembras','Total'],
-    dailyData.map(d=>rTr([fmtDate(d.date),d.B.males,d.B.females,d.B.n]))
-  )}
+  ${(()=>{ const pct=(v,t)=>t?(v/t*100).toFixed(0)+'%':'—'; const tM=dailyData.reduce((s,d)=>s+d.B.males,0),tF=dailyData.reduce((s,d)=>s+d.B.females,0),tN=dailyData.reduce((s,d)=>s+d.B.n,0); return reportTable(['Fecha','Machos','Hembras','Total','% Machos','% Hembras'], dailyData.map(d=>rTr([fmtDate(d.date),d.B.males,d.B.females,d.B.n,pct(d.B.males,d.B.n),pct(d.B.females,d.B.n)])), ['CONSOLIDADO',tM,tF,tN,pct(tM,tN),pct(tF,tN)]); })()}
   </div>
 
   ${sep('5) Tamaños — presentes durante el día')}
   <div style="${blockStyle}">
-  ${reportTable(['Fecha','Pequeños','Medianos','Grandes','Total'],
-    dailyData.map(d=>rTr([fmtDate(d.date),d.A.sm,d.A.md,d.A.lg,d.A.n]))
-  )}
+  ${(()=>{ const pct=(v,t)=>t?(v/t*100).toFixed(0)+'%':'—'; const tS=dailyData.reduce((s,d)=>s+d.A.sm,0),tM=dailyData.reduce((s,d)=>s+d.A.md,0),tL=dailyData.reduce((s,d)=>s+d.A.lg,0),tN=dailyData.reduce((s,d)=>s+d.A.n,0); return reportTable(['Fecha','Pequeños','Medianos','Grandes','Total','% Peq','% Med','% Grd'], dailyData.map(d=>rTr([fmtDate(d.date),d.A.sm,d.A.md,d.A.lg,d.A.n,pct(d.A.sm,d.A.n),pct(d.A.md,d.A.n),pct(d.A.lg,d.A.n)])), ['CONSOLIDADO',tS,tM,tL,tN,pct(tS,tN),pct(tM,tN),pct(tL,tN)]); })()}
   </div>
   <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Tamaños — se quedan a dormir</div>
   <div style="${blockStyle}">
-  ${reportTable(['Fecha','Pequeños','Medianos','Grandes','Total'],
-    dailyData.map(d=>rTr([fmtDate(d.date),d.B.sm,d.B.md,d.B.lg,d.B.n]))
-  )}
+  ${(()=>{ const pct=(v,t)=>t?(v/t*100).toFixed(0)+'%':'—'; const tS=dailyData.reduce((s,d)=>s+d.B.sm,0),tM=dailyData.reduce((s,d)=>s+d.B.md,0),tL=dailyData.reduce((s,d)=>s+d.B.lg,0),tN=dailyData.reduce((s,d)=>s+d.B.n,0); return reportTable(['Fecha','Pequeños','Medianos','Grandes','Total','% Peq','% Med','% Grd'], dailyData.map(d=>rTr([fmtDate(d.date),d.B.sm,d.B.md,d.B.lg,d.B.n,pct(d.B.sm,d.B.n),pct(d.B.md,d.B.n),pct(d.B.lg,d.B.n)])), ['CONSOLIDADO',tS,tM,tL,tN,pct(tS,tN),pct(tM,tN),pct(tL,tN)]); })()}
   </div>
 
   ${sep('6) Comportamientos — presentes durante el día')}
   <div style="${blockStyle}">
-  ${reportTable(['Fecha','Agresivo','Ladrador','Juguetón','Fácil','Total'],
-    dailyData.map(d=>rTr([fmtDate(d.date),d.A.ag,d.A.la,d.A.ju,d.A.fa,d.A.n]))
-  )}
+  ${(()=>{ const pct=(v,t)=>t?(v/t*100).toFixed(0)+'%':'—'; const tAg=dailyData.reduce((s,d)=>s+d.A.ag,0),tLa=dailyData.reduce((s,d)=>s+d.A.la,0),tJu=dailyData.reduce((s,d)=>s+d.A.ju,0),tFa=dailyData.reduce((s,d)=>s+d.A.fa,0),tN=dailyData.reduce((s,d)=>s+d.A.n,0); return reportTable(['Fecha','Agresivo','Ladrador','Juguetón','Fácil','Total','% Agr','% Lad','% Jug','% Fác'], dailyData.map(d=>rTr([fmtDate(d.date),d.A.ag,d.A.la,d.A.ju,d.A.fa,d.A.n,pct(d.A.ag,d.A.n),pct(d.A.la,d.A.n),pct(d.A.ju,d.A.n),pct(d.A.fa,d.A.n)])), ['CONSOLIDADO',tAg,tLa,tJu,tFa,tN,pct(tAg,tN),pct(tLa,tN),pct(tJu,tN),pct(tFa,tN)]); })()}
   </div>
   <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Comportamientos — se quedan a dormir</div>
   <div style="${blockStyle}">
-  ${reportTable(['Fecha','Agresivo','Ladrador','Juguetón','Fácil','Total'],
-    dailyData.map(d=>rTr([fmtDate(d.date),d.B.ag,d.B.la,d.B.ju,d.B.fa,d.B.n]))
-  )}
+  ${(()=>{ const pct=(v,t)=>t?(v/t*100).toFixed(0)+'%':'—'; const tAg=dailyData.reduce((s,d)=>s+d.B.ag,0),tLa=dailyData.reduce((s,d)=>s+d.B.la,0),tJu=dailyData.reduce((s,d)=>s+d.B.ju,0),tFa=dailyData.reduce((s,d)=>s+d.B.fa,0),tN=dailyData.reduce((s,d)=>s+d.B.n,0); return reportTable(['Fecha','Agresivo','Ladrador','Juguetón','Fácil','Total','% Agr','% Lad','% Jug','% Fác'], dailyData.map(d=>rTr([fmtDate(d.date),d.B.ag,d.B.la,d.B.ju,d.B.fa,d.B.n,pct(d.B.ag,d.B.n),pct(d.B.la,d.B.n),pct(d.B.ju,d.B.n),pct(d.B.fa,d.B.n)])), ['CONSOLIDADO',tAg,tLa,tJu,tFa,tN,pct(tAg,tN),pct(tLa,tN),pct(tJu,tN),pct(tFa,tN)]); })()}
   </div>
   <div style="background:var(--gray-50);border:0.5px solid var(--border);border-radius:var(--radius);padding:12px 16px;font-size:12px;color:var(--text-muted);margin-bottom:20px">
     <strong>Notas:</strong> Prioridad de comportamiento: 1) Agresivo · 2) Ladrador · 3) Juguetón · 4) Fácil. Cada perro se contabiliza una sola vez según su comportamiento de mayor prioridad.
   </div>
 
-  ${sep('7) Ingresos por fecha')}
-  <div style="${blockStyle}">
-  ${reportTable(['Fecha','Día','Detalle','Tipo','Monto'],
-    [
-      ...allStays.filter(s=>s.check_out_date>=start&&s.check_out_date<=end).sort((a,b)=>a.check_out_date.localeCompare(b.check_out_date)).map(s=>{
-        const dog=DB.getDog(s.dog_id);
-        return rTr([fmtDate(s.check_out_date),DIAS[new Date(s.check_out_date+'T12:00:00').getDay()],
-          `${dog?.name||'?'} ${dog?.owner_last_name||''} (${dateDiff(s.check_in_date,s.check_out_date)}d${s.is_exchange?' — canje':''}${s.late_pickup?' — tarde':''})`,
-          '<span class="badge badge-green">Hospedaje</span>',
-          s.is_exchange?'S/ 0':`<strong>${fmtMoney(calcStayTotal(s))}</strong>`]);
-      }),
-      ...allDcs.sort((a,b)=>a.date.localeCompare(b.date)).map(d=>{
-        const dog=DB.getDog(d.dog_id);
-        return rTr([fmtDate(d.date),DIAS[new Date(d.date+'T12:00:00').getDay()],
-          `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
-          '<span class="badge badge-teal">Daycare</span>',
-          d.discount_pct>0?`<strong>${fmtMoney(calcDaycareTotal(d))}</strong> <span style="font-size:11px;color:var(--amber-800)">(-${d.discount_pct}%)</span>`:`<strong>${fmtMoney(d.rate)}</strong>`]);
-      })
-    ]
-  )}
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
-    <div class="stat-card green"><div class="stat-label">💰 Total hospedajes</div><div class="stat-value">${fmtMoney(totalStayIncome)}</div></div>
-    <div class="stat-card teal"><div class="stat-label">🟦 Total daycare</div><div class="stat-value">${fmtMoney(totalDcIncome)}</div></div>
-    <div class="stat-card amber"><div class="stat-label">📈 Total del período</div><div class="stat-value">${fmtMoney(totalIncome)}</div></div>
-  </div>
-
-  ${sep('8) Resumen de cobranzas')}
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px">
-    <div class="stat-card green"><div class="stat-label">💵 Dinero cobrado</div><div class="stat-value">${fmtMoney(totalCobrado)}</div></div>
-    <div class="stat-card coral"><div class="stat-label">📋 Pendiente de cobro</div><div class="stat-value">${fmtMoney(totalPendiente)}</div></div>
-    <div class="stat-card teal"><div class="stat-label">📈 Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalProyectado)}</div></div>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-    <div class="stat-card green"><div class="stat-label">% Cobrado</div><div class="stat-value">${pctCob}%</div></div>
-    <div class="stat-card coral"><div class="stat-label">% Pendiente</div><div class="stat-value">${pctPend}%</div></div>
-  </div>
-
-  ${sep('9) Perros con deuda')}
-  ${debtStays.length ? `<div style="${blockStyle}">
-  ${reportTable(['Perro','Dueño','Total estadía','Cobrado','Saldo pendiente','Fecha salida','Días deuda'],
-    debtStays.map(s=>{
-      const dog=DB.getDog(s.dog_id); const tot=calcStayTotal(s); const paid=getPaidAmount(s.id); const pend=getPendingAmount(s); const dias=getDaysDebt(s);
-      return rTr([`<strong>${dog?.name||'?'}</strong>`,dog?.owner_last_name||'—',fmtMoney(tot),
-        paid>0?fmtMoney(paid):'—',`<strong style="color:var(--red-800)">${fmtMoney(pend)}</strong>`,
-        fmtDate(s.check_out_date),dias>0?`<span class="badge ${dias>=14?'badge-red':dias>=7?'badge-coral':'badge-amber'}">${dias}d</span>`:'activo']);
-    }),
-    ['','','','',`<strong style="color:var(--red-800)">${fmtMoney(debtStays.reduce((s,x)=>s+getPendingAmount(x),0))}</strong>`,'','']
-  )}
-  </div>` : '<div class="alert alert-success">🎉 Sin deudas en el período.</div>'}
-
-  ${sep('10) Día de mayor y menor ocupación (se quedan a dormir)')}
+  ${sep('7) Día de mayor y menor ocupación (se quedan a dormir)')}
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
     <div style="background:var(--green-50);border:0.5px solid var(--green-200);border-radius:var(--radius-lg);padding:16px 20px">
       <div style="font-size:12px;font-weight:600;color:var(--green-800);margin-bottom:8px">📈 Mayor ocupación</div>
@@ -6731,34 +6675,60 @@ function renderReport() {
     </div>
   </div>
 
-  ${sep('11) Indicadores de gestión')}
-  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
-    <div class="stat-card"><div class="stat-label">🐶 Total hospedajes</div><div class="stat-value">${allStays.length}</div></div>
-    <div class="stat-card"><div class="stat-label">🟦 Total daycares</div><div class="stat-value">${allDcs.length}</div></div>
-    <div class="stat-card green"><div class="stat-label">💰 Ticket promedio</div><div class="stat-value">${fmtMoney(avgTicket)}</div></div>
-    <div class="stat-card teal"><div class="stat-label">📈 Ingreso promedio/día</div><div class="stat-value">${fmtMoney(avgDay)}</div></div>
+  ${sep('8) Indicadores de ocupación')}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
     <div class="stat-card"><div class="stat-label">🏠 Ocupación promedio</div><div class="stat-value">${avgOcc.toFixed(1)}</div><div class="stat-sub">${avgOccPct}% de capacidad</div></div>
     <div class="stat-card amber"><div class="stat-label">🏠 Ocupación máxima</div><div class="stat-value">${maxB}</div><div class="stat-sub">${maxOccPct}% de capacidad</div></div>
-    <div class="stat-card coral"><div class="stat-label">💳 Clientes con deuda</div><div class="stat-value">${debtStays.length}</div></div>
-    <div class="stat-card coral"><div class="stat-label">💳 % con deuda</div><div class="stat-value">${uniqueDogIds.length>0?(debtStays.length/uniqueDogIds.length*100).toFixed(1):0}%</div></div>
-  </div>
-  <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⭐ Top 10 clientes por facturación</div>
-  <div style="${blockStyle}">
-  ${reportTable(['Cliente','Total facturado'],
-    top10.map(([k,v],i)=>rTr([`<strong>${i+1}. ${k}</strong>`,`<strong>${fmtMoney(v)}</strong>`]))
-  )}
   </div>
 
-  ${sep('12) Última salida del período')}
-  <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;display:flex;gap:32px">
-    <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Fecha</div><div style="font-size:20px;font-weight:700">${lastLeaving?fmtDate(lastLeaving.check_out_date):'—'}</div></div>
-    <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Perro</div><div style="font-size:20px;font-weight:700">${lastLeavingDog?.name||'—'}</div></div>
-    <div><div style="font-size:11px;color:var(--text-muted);margin-bottom:3px">Cliente</div><div style="font-size:20px;font-weight:700">${lastLeavingDog?.owner_last_name||'—'}</div></div>
+  ${sep('9) Top 10 clientes por ingresos cobrados en el período')}
+  <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Solo incluye pagos recibidos dentro del período. Hacé clic en un cliente para ver el desglose.</div>
+  <div style="${blockStyle}">
+  ${reportTable(['#','Cliente','Total cobrado'],
+    top10.map(([k,v],i)=>
+      `<tr style="cursor:pointer" onclick="showClientReport('${k.replace(/'/g,"\\'")}')">
+        <td style="padding:9px 12px">${i+1}</td>
+        <td style="padding:9px 12px"><strong>${k}</strong> <span style="font-size:11px;color:var(--green-700)">▶ ver desglose</span></td>
+        <td style="padding:9px 12px"><strong>${fmtMoney(v)}</strong></td>
+      </tr>`
+    )
+  )}
   </div>
 
   </div>`;
 
   document.getElementById('report-content').innerHTML = html;
+}
+
+function showClientReport(name) {
+  const pays = (window._reportClientPays || {})[name] || [];
+  const total = pays.reduce((s,p)=>s+p.amount,0);
+  pays.sort((a,b)=>a.date.localeCompare(b.date));
+  document.getElementById('view-title').textContent = `Desglose de pagos — ${name}`;
+  document.getElementById('view-content').innerHTML = `
+    <div style="padding:16px 20px">
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${pays.length} pago${pays.length!==1?'s':''} registrado${pays.length!==1?'s':''} en el período</p>
+      ${pays.length ? `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead><tr>
+          <th style="background:var(--surface);padding:8px 12px;text-align:left;border-bottom:2px solid var(--border)">Fecha</th>
+          <th style="background:var(--surface);padding:8px 12px;text-align:left;border-bottom:2px solid var(--border)">Concepto</th>
+          <th style="background:var(--surface);padding:8px 12px;text-align:right;border-bottom:2px solid var(--border)">Monto</th>
+        </tr></thead>
+        <tbody>
+          ${pays.map(p=>`<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:8px 12px">${fmtDate(p.date)}</td>
+            <td style="padding:8px 12px">${p.concept}</td>
+            <td style="padding:8px 12px;text-align:right"><strong>${fmtMoney(p.amount)}</strong></td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot><tr style="background:var(--green-50)">
+          <td colspan="2" style="padding:9px 12px;font-weight:700">TOTAL</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:700;color:var(--green-800)">${fmtMoney(total)}</td>
+        </tr></tfoot>
+      </table></div>` : '<p style="color:var(--text-muted);font-size:13px">Sin pagos registrados.</p>'}
+    </div>`;
+  document.getElementById('view-footer').innerHTML = `<button class="btn btn-secondary" onclick="closeModal('modal-view')">Cerrar</button>`;
+  openModal('modal-view');
 }
 
 // ===================== CARETAKERS =====================
@@ -9026,20 +8996,65 @@ function exportAIPDF() {
   } else { html += '<p style="font-size:12px;color:green">✓ Sin incidencias en el período.</p>'; }
 
   // ── CUIDADORAS ──
-  html += sec('5. CUIDADORAS Y ASIGNACIONES');
+  html += sec('5. CUIDADORAS — INFORMACIÓN COMPLETA');
   cts.forEach((ct, i) => {
     const myAsgns = DB.assignments.filter(a => a.caretaker_id === ct.id && a.from_dt?.slice(0,10) <= to && a.to_dt?.slice(0,10) >= from);
+    const myVacs  = DB.vacations.filter(v => v.caretaker_id === ct.id);
+    const myFd    = DB.feedingShifts.filter(f => inRange(f.date) && f.caretaker_id === ct.id);
+    const myPh    = DB.phoneShifts.filter(p => inRange(p.date) && p.caretaker_id === ct.id);
     html += sub(`Cuidadora ${i+1}: ${ct.name||'SIN NOMBRE'}`);
     html += kv('Nombre', miss(ct.name));
     html += kv('Teléfono', miss(ct.phone));
+    html += kv('Email', miss(ct.email));
     html += kv('Estado', miss(ct.status));
-    html += kv('Asignaciones en el período', myAsgns.length);
-    myAsgns.forEach((a, ai) => {
-      const refLabel = a.service_type === 'hospedaje'
-        ? (() => { const s = DB.stays.find(x => x.id === a.ref_id); const d = s ? DB.getDog(s.dog_id) : null; return d?.name || 'hospedaje'; })()
-        : 'daycare';
-      html += kv(`  Asig ${ai+1}`, `${refLabel} del ${fmtD(a.from_dt?.slice(0,10))} al ${fmtD(a.to_dt?.slice(0,10))}`);
-    });
+    html += kv('En vacaciones hoy', isCaretakerOnVacation(ct.id) ? 'SÍ' : 'No');
+
+    // Vacaciones
+    html += sub(`  Vacaciones (${myVacs.length} registradas total):`);
+    if (myVacs.length) {
+      myVacs.sort((a,b)=>a.start_dt.localeCompare(b.start_dt)).forEach((v, vi) => {
+        html += kv(`    Vac ${vi+1} salida`, fmtD(v.start_dt?.slice(0,10)));
+        html += kv(`    Vac ${vi+1} regreso`, fmtD(v.end_dt?.slice(0,10)));
+        html += kv(`    Vac ${vi+1} estado`, miss(v.status));
+        html += kv(`    Vac ${vi+1} notas`, miss(v.notes));
+      });
+    } else { html += kv('    Estado', 'sin vacaciones registradas'); }
+
+    // Perros asignados en el período
+    html += sub(`  Perros asignados en el período (${myAsgns.length} asignaciones):`);
+    if (myAsgns.length) {
+      myAsgns.forEach((a, ai) => {
+        let dogName = '?', dogDetails = '';
+        if (a.service_type === 'hospedaje') {
+          const s = DB.stays.find(x => x.id === a.ref_id);
+          const d = s ? DB.getDog(s.dog_id) : null;
+          dogName = d?.name || '?';
+          dogDetails = s ? ` (hospedaje ${fmtD(s.check_in_date)} → ${s.open_ended?'sin fecha':fmtD(s.check_out_date)})` : '';
+        } else {
+          const dc = DB.daycares.find(x => x.id === a.ref_id);
+          const d = dc ? DB.getDog(dc.dog_id) : null;
+          dogName = d?.name || '?';
+          dogDetails = dc ? ` (daycare ${fmtD(dc.date)})` : '';
+        }
+        html += kv(`    Asig ${ai+1}`, `${dogName}${dogDetails} — del ${fmtD(a.from_dt?.slice(0,10))} al ${fmtD(a.to_dt?.slice(0,10))} (${a.mode||'completa'})`);
+      });
+    } else { html += kv('    Estado', 'sin asignaciones en el período'); }
+
+    // Turnos de alimentación en el período
+    html += sub(`  Turnos de alimentación en el período (${myFd.length}):`);
+    if (myFd.length) {
+      myFd.sort((a,b)=>a.date.localeCompare(b.date)).forEach((f, fi) => {
+        html += kv(`    Turno alim ${fi+1}`, `${fmtD(f.date)} turno ${f.shift||'?'} — ${f.dog_count||0} perros — ${f.confirmed?'confirmado':'pendiente'}${f.notes?' — '+f.notes:''}`);
+      });
+    } else { html += kv('    Estado', 'sin turnos de alimentación en el período'); }
+
+    // Turnos de teléfono en el período
+    html += sub(`  Turnos de teléfono en el período (${myPh.length}):`);
+    if (myPh.length) {
+      myPh.sort((a,b)=>a.date.localeCompare(b.date)).forEach((p, pi) => {
+        html += kv(`    Turno tel ${pi+1}`, `${fmtD(p.date)}${p.notes?' — '+p.notes:''}`);
+      });
+    } else { html += kv('    Estado', 'sin turnos de teléfono en el período'); }
   });
 
   // ── OCUPACIÓN DIARIA ──
@@ -9109,6 +9124,176 @@ function exportAIPDF() {
   if (incidentPairs.length) { incidentPairs.forEach(p => { html += `<div style="font-size:12px;margin:2px 0">• ${p}</div>`; }); }
   else { html += kv('Estado', 'sin incidencias en el período'); }
 
+  // ── PAGOS ADELANTADOS ──
+  html += sec('11. TODOS LOS PAGOS ADELANTADOS EN EL PERÍODO');
+  const aiAdvances = (() => {
+    const list = [];
+    // Pagos de hospedaje registrados en DB.payments (adelantos al crear reserva + pagos parciales)
+    allPays.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
+      const st = DB.stays.find(s => s.id === p.stay_id);
+      const dog = st ? DB.getDog(st.dog_id) : null;
+      const isAdv = (p.note||'').toLowerCase().includes('adelanto');
+      list.push({ concepto: isAdv ? 'Pago adelantado hospedaje' : 'Pago hospedaje', fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: p.note || '' });
+    });
+    // Adelantos de daycare (advance_paid en el registro)
+    DB.daycares.filter(d => (d.advance_paid || 0) > 0 && inRange(d.date)).forEach(d => {
+      const dog = DB.getDog(d.dog_id);
+      list.push({ concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(d.advance_paid), nota: '' });
+    });
+    // Adelantos de reservas (hospedaje y daycare)
+    (DB.reservas || []).filter(r => r.advance_payments?.length).forEach(r => {
+      const dog = DB.getDog(r.dog_id);
+      (r.advance_payments || []).filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
+        list.push({ concepto: r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare', fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: '' });
+      });
+    });
+    return list.sort((a, b) => a.fecha.localeCompare(b.fecha));
+  })();
+  html += kv('Total registros de pago en período', aiAdvances.length);
+  html += kv('Monto total', fm(aiAdvances.reduce((s,a)=>s+a.amount,0)));
+  if (aiAdvances.length) {
+    html += `<table><thead><tr><th>Concepto</th><th>Fecha</th><th>Perro</th><th>Dueño</th><th>Monto (S/)</th><th>Nota</th></tr></thead><tbody>`;
+    aiAdvances.forEach(a => { html += `<tr><td>${a.concepto}</td><td>${fmtD(a.fecha)}</td><td>${a.perro}</td><td>${a.dueno}</td><td>${fm(a.amount)}</td><td>${a.nota||'—'}</td></tr>`; });
+    html += '</tbody></table>';
+  } else { html += '<p style="font-size:12px">Sin pagos registrados en el período.</p>'; }
+
+  // ── RESUMEN COMPLETO ──
+  html += sec('12. RESUMEN COMPLETO DEL PERÍODO');
+  (() => {
+    const DIAS_RC = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+    const rcDays = datesInRange(from, to);
+    const rcStays = DB.stays.filter(s => s.service_type==='hospedaje' && s.status!=='cancelado' && s.check_out_date>=from && s.check_in_date<=to);
+    const rcDcs   = DB.daycares.filter(d => d.date>=from && d.date<=to);
+    const mk = ids => {
+      const dogs = ids.map(id=>DB.getDog(id)).filter(Boolean);
+      return { n:ids.length, males:dogs.filter(d=>d.sex==='macho').length, females:dogs.filter(d=>d.sex==='hembra').length,
+        sm:dogs.filter(d=>d.size==='pequeño').length, md:dogs.filter(d=>d.size==='mediano').length, lg:dogs.filter(d=>d.size==='grande').length,
+        ag:dogs.filter(d=>d.behavior_primary==='agresivo').length, la:dogs.filter(d=>d.behavior_primary==='ladrador').length,
+        ju:dogs.filter(d=>d.behavior_primary==='juguetón').length, fa:dogs.filter(d=>d.behavior_primary==='fácil').length };
+    };
+    const rcDaily = rcDays.map(d => {
+      const hosted  = DB.stays.filter(s=>s.service_type==='hospedaje'&&s.check_in_date<=d&&s.check_out_date>d&&s.status!=='cancelado');
+      const leaving = DB.stays.filter(s=>s.service_type==='hospedaje'&&s.check_out_date===d&&s.status!=='cancelado');
+      const dcDay   = DB.daycares.filter(dc=>dc.date===d);
+      const presentIds = [...new Set([...hosted.map(s=>s.dog_id),...leaving.map(s=>s.dog_id),...dcDay.map(dc=>dc.dog_id)])];
+      const sleepIds   = hosted.map(s=>s.dog_id);
+      const dow = new Date(d+'T12:00:00').getDay();
+      return { date:d, dayName:DIAS_RC[dow], dow, A:mk(presentIds), B:mk(sleepIds) };
+    });
+
+    const pct = (v,t) => t ? (v/t*100).toFixed(0)+'%' : '—';
+    const rcTotalStay = rcStays.reduce((s,x)=>s+calcStayTotal(x),0);
+    const rcTotalDc   = rcDcs.reduce((s,d)=>s+calcDaycareTotal(d),0);
+    const rcCobrado   = rcStays.reduce((s,x)=>s+getPaidAmount(x.id),0) + rcTotalDc;
+    const rcPendiente = rcStays.reduce((s,x)=>s+getPendingAmount(x),0);
+    const bVals = rcDaily.map(d=>d.B.n).filter(n=>n>0);
+    const rcMaxB = bVals.length ? Math.max(...bVals) : 0;
+    const rcMinB = bVals.length ? Math.min(...bVals) : 0;
+    const rcMaxBDay = rcDaily.find(d=>d.B.n===rcMaxB&&bVals.length);
+    const rcMinBDay = rcDaily.find(d=>d.B.n===rcMinB&&bVals.length);
+    const rcAvgOcc = rcDays.length ? rcDaily.reduce((s,d)=>s+d.B.n,0)/rcDays.length : 0;
+
+    // Subsec helper
+    const ss = t => `<h3 style="margin:18px 0 6px;font-size:12px;font-weight:700;text-transform:uppercase;color:#555;border-bottom:1px solid #ddd;padding-bottom:3px">${t}</h3>`;
+    const tbl2 = (headers, rows, footer) => `<div style="overflow-x:auto;margin-bottom:14px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr>${headers.map(h=>`<th style="background:#eee;padding:5px 8px;text-align:left;border:1px solid #ccc">${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td style="padding:5px 8px;border:1px solid #ddd">${c??''}</td>`).join('')}</tr>`).join('')}${footer?`<tr style="background:#e8f5e9;font-weight:700">${footer.map(c=>`<td style="padding:5px 8px;border:1px solid #ccc">${c??''}</td>`).join('')}</tr>`:''}</tbody></table></div>`;
+
+    // 12.1 Listado de estadías y pagos
+    html += ss('12.1 Listado de estadías');
+    html += tbl2(['Perro','Dueño','Ingreso','Salida','Total','Cobrado','Pendiente','Estado'],
+      rcStays.map(s=>{ const dog=DB.getDog(s.dog_id); return [dog?.name||'?',dog?.owner_last_name||'—',s.check_in_date,s.check_out_date,fmtMoney(calcStayTotal(s)),fmtMoney(getPaidAmount(s.id)),getPendingAmount(s)>0?fmtMoney(getPendingAmount(s)):'—',s.status]; }),
+      ['','','','',fmtMoney(rcTotalStay),fmtMoney(rcCobrado),fmtMoney(rcPendiente),'']
+    );
+
+    // 12.2 Daycares
+    if (rcDcs.length) {
+      html += ss('12.2 Daycares del período');
+      html += tbl2(['Fecha','Perro','Dueño','Total'],
+        rcDcs.map(d=>{ const dog=DB.getDog(d.dog_id); return [d.date,dog?.name||'?',dog?.owner_last_name||'—',fmtMoney(calcDaycareTotal(d))]; }),
+        ['','','Total',fmtMoney(rcTotalDc)]
+      );
+    }
+
+    // 12.3 Ocupación diaria
+    html += ss('12.3 Ocupación diaria — presentes durante el día');
+    html += tbl2(['Fecha','Día','Perros presentes'],
+      rcDaily.map(d=>[d.date, d.dayName, d.A.n])
+    );
+    html += ss('12.3b Ocupación diaria — se quedan a dormir');
+    html += tbl2(['Fecha','Día','Perros durmiendo'],
+      rcDaily.map(d=>[d.date, d.dayName, d.B.n])
+    );
+
+    // 12.4 Machos y hembras
+    const tMaA=rcDaily.reduce((s,d)=>s+d.A.males,0), tFeA=rcDaily.reduce((s,d)=>s+d.A.females,0), tNA=rcDaily.reduce((s,d)=>s+d.A.n,0);
+    const tMaB=rcDaily.reduce((s,d)=>s+d.B.males,0), tFeB=rcDaily.reduce((s,d)=>s+d.B.females,0), tNB=rcDaily.reduce((s,d)=>s+d.B.n,0);
+    html += ss('12.4 Machos y hembras — presentes durante el día');
+    html += tbl2(['Fecha','Machos','Hembras','Total','% Machos','% Hembras'],
+      rcDaily.map(d=>[d.date,d.A.males,d.A.females,d.A.n,pct(d.A.males,d.A.n),pct(d.A.females,d.A.n)]),
+      ['CONSOLIDADO',tMaA,tFeA,tNA,pct(tMaA,tNA),pct(tFeA,tNA)]
+    );
+    html += ss('12.4b Machos y hembras — se quedan a dormir');
+    html += tbl2(['Fecha','Machos','Hembras','Total','% Machos','% Hembras'],
+      rcDaily.map(d=>[d.date,d.B.males,d.B.females,d.B.n,pct(d.B.males,d.B.n),pct(d.B.females,d.B.n)]),
+      ['CONSOLIDADO',tMaB,tFeB,tNB,pct(tMaB,tNB),pct(tFeB,tNB)]
+    );
+
+    // 12.5 Tamaños
+    const tSA=rcDaily.reduce((s,d)=>s+d.A.sm,0),tMA=rcDaily.reduce((s,d)=>s+d.A.md,0),tLA=rcDaily.reduce((s,d)=>s+d.A.lg,0);
+    const tSB=rcDaily.reduce((s,d)=>s+d.B.sm,0),tMB=rcDaily.reduce((s,d)=>s+d.B.md,0),tLB=rcDaily.reduce((s,d)=>s+d.B.lg,0);
+    html += ss('12.5 Tamaños — presentes durante el día');
+    html += tbl2(['Fecha','Pequeños','Medianos','Grandes','Total','% Peq','% Med','% Grd'],
+      rcDaily.map(d=>[d.date,d.A.sm,d.A.md,d.A.lg,d.A.n,pct(d.A.sm,d.A.n),pct(d.A.md,d.A.n),pct(d.A.lg,d.A.n)]),
+      ['CONSOLIDADO',tSA,tMA,tLA,tNA,pct(tSA,tNA),pct(tMA,tNA),pct(tLA,tNA)]
+    );
+    html += ss('12.5b Tamaños — se quedan a dormir');
+    html += tbl2(['Fecha','Pequeños','Medianos','Grandes','Total','% Peq','% Med','% Grd'],
+      rcDaily.map(d=>[d.date,d.B.sm,d.B.md,d.B.lg,d.B.n,pct(d.B.sm,d.B.n),pct(d.B.md,d.B.n),pct(d.B.lg,d.B.n)]),
+      ['CONSOLIDADO',tSB,tMB,tLB,tNB,pct(tSB,tNB),pct(tMB,tNB),pct(tLB,tNB)]
+    );
+
+    // 12.6 Comportamientos
+    const tAgA=rcDaily.reduce((s,d)=>s+d.A.ag,0),tLaA=rcDaily.reduce((s,d)=>s+d.A.la,0),tJuA=rcDaily.reduce((s,d)=>s+d.A.ju,0),tFaA=rcDaily.reduce((s,d)=>s+d.A.fa,0);
+    const tAgB=rcDaily.reduce((s,d)=>s+d.B.ag,0),tLaB=rcDaily.reduce((s,d)=>s+d.B.la,0),tJuB=rcDaily.reduce((s,d)=>s+d.B.ju,0),tFaB=rcDaily.reduce((s,d)=>s+d.B.fa,0);
+    html += ss('12.6 Comportamientos — presentes durante el día');
+    html += tbl2(['Fecha','Agresivo','Ladrador','Juguetón','Fácil','Total','% Agr','% Lad','% Jug','% Fác'],
+      rcDaily.map(d=>[d.date,d.A.ag,d.A.la,d.A.ju,d.A.fa,d.A.n,pct(d.A.ag,d.A.n),pct(d.A.la,d.A.n),pct(d.A.ju,d.A.n),pct(d.A.fa,d.A.n)]),
+      ['CONSOLIDADO',tAgA,tLaA,tJuA,tFaA,tNA,pct(tAgA,tNA),pct(tLaA,tNA),pct(tJuA,tNA),pct(tFaA,tNA)]
+    );
+    html += ss('12.6b Comportamientos — se quedan a dormir');
+    html += tbl2(['Fecha','Agresivo','Ladrador','Juguetón','Fácil','Total','% Agr','% Lad','% Jug','% Fác'],
+      rcDaily.map(d=>[d.date,d.B.ag,d.B.la,d.B.ju,d.B.fa,d.B.n,pct(d.B.ag,d.B.n),pct(d.B.la,d.B.n),pct(d.B.ju,d.B.n),pct(d.B.fa,d.B.n)]),
+      ['CONSOLIDADO',tAgB,tLaB,tJuB,tFaB,tNB,pct(tAgB,tNB),pct(tLaB,tNB),pct(tJuB,tNB),pct(tFaB,tNB)]
+    );
+
+    // 12.7 Ocupación mayor/menor y promedio
+    html += ss('12.7 Indicadores de ocupación');
+    html += kv('Ocupación promedio (duermen)', rcAvgOcc.toFixed(1)+' perros ('+((rcAvgOcc/20)*100).toFixed(1)+'% capacidad)');
+    html += kv('Ocupación máxima (duermen)', rcMaxB+' perros ('+((rcMaxB/20)*100).toFixed(1)+'%)');
+    html += kv('Día mayor ocupación', rcMaxBDay ? rcMaxBDay.date+' — '+rcMaxBDay.dayName : '—');
+    html += kv('Día menor ocupación', rcMinBDay ? rcMinBDay.date+' — '+rcMinBDay.dayName : '—');
+
+    // 12.8 Top 10 clientes
+    const rcClientPays = {};
+    DB.payments.filter(p=>p.date>=from&&p.date<=to&&p.amount>0).forEach(p=>{
+      const st=DB.stays.find(s=>s.id===p.stay_id); if(!st) return;
+      const dog=DB.getDog(st.dog_id); const k=dog?.owner_last_name||'?';
+      if(!rcClientPays[k]) rcClientPays[k]={total:0,pays:[]};
+      rcClientPays[k].total+=parseFloat(p.amount);
+      rcClientPays[k].pays.push({date:p.date,concept:`Hospedaje — ${dog?.name||'?'}`,amount:parseFloat(p.amount)});
+    });
+    rcDcs.forEach(d=>{ const dog=DB.getDog(d.dog_id); const k=dog?.owner_last_name||'?'; const paid=calcDaycareTotal(d); if(paid>0){if(!rcClientPays[k])rcClientPays[k]={total:0,pays:[]};rcClientPays[k].total+=paid;rcClientPays[k].pays.push({date:d.date,concept:`Daycare — ${dog?.name||'?'}`,amount:paid});} });
+    const rcTop10 = Object.entries(rcClientPays).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
+    html += ss('12.8 Top 10 clientes por cobrado en el período');
+    html += tbl2(['#','Cliente','Total cobrado'],[...rcTop10.map(([k,v],i)=>[i+1,k,fmtMoney(v.total)])]);
+    rcTop10.forEach(([k,v])=>{
+      html += `<p style="font-size:11px;font-weight:600;margin:10px 0 4px">${k} — desglose:</p>`;
+      html += tbl2(['Fecha','Concepto','Monto'],
+        [...v.pays].sort((a,b)=>a.date.localeCompare(b.date)).map(p=>[p.date,p.concept,fmtMoney(p.amount)]),
+        ['','Total',fmtMoney(v.total)]
+      );
+    });
+  })();
+
   html += `<hr style="margin-top:32px"><p style="font-size:10px;color:#888;text-align:center">FIN DEL DOCUMENTO — Aldea PDF para IA — Período ${from} → ${to} — ${new Date().toLocaleString('es')}</p>`;
   html += '</body></html>';
 
@@ -9177,7 +9362,18 @@ function buildExportData(from, to) {
                        + rests.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0);
   const totalProjected = stays.reduce((s, st) => s + calcStayTotal(st), 0);
 
-  return { from, to, stays, dcs, incs, vacs, fdShifts, phShifts, dogs, rests, totalIncome, totalPending, totalProjected };
+  const advStays = DB.payments
+    .filter(p => p.note === 'Adelanto al registro' && inRange(p.date))
+    .map(p => { const st = DB.stays.find(s => s.id === p.stay_id); const dog = st ? DB.getDog(st.dog_id) : null; return { concepto: 'Pago adelantado hospedaje', fecha: p.date, perro: dog?.name || '?', amount: p.amount }; });
+  const advDcs = DB.daycares
+    .filter(d => (d.advance_paid || 0) > 0 && inRange(d.date))
+    .map(d => { const dog = DB.getDog(d.dog_id); return { concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', amount: d.advance_paid }; });
+  const advRes = (DB.reservas || [])
+    .filter(r => r.advance_payments?.length)
+    .flatMap(r => (r.advance_payments || []).filter(p => inRange(p.date) && p.amount > 0).map(p => { const dog = DB.getDog(r.dog_id); return { concepto: r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare', fecha: p.date, perro: dog?.name || '?', amount: p.amount }; }));
+  const advances = [...advStays, ...advDcs, ...advRes].sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+  return { from, to, stays, dcs, incs, vacs, fdShifts, phShifts, dogs, rests, totalIncome, totalPending, totalProjected, advances };
 }
 
 function syncPreviewRange() {
@@ -9565,6 +9761,11 @@ function exportPDF(data, fromLabel, toLabel) {
     ${tbl(['Perro','Tipo','Marca','Cantidad','Frecuencia','Indicaciones'],
       data.dogs.filter(dog=>dog.feeding&&(dog.feeding.type||dog.feeding.brand)).map(dog=>[dog.name,dog.feeding.type||'',dog.feeding.brand||'',dog.feeding.amount||'',dog.feeding.frequency||'',dog.feeding.notes||''])
     )}
+
+    ${sec(11,'Pagos adelantados')}
+    ${data.advances.length ? tbl(['Concepto','Fecha','Perro','Monto (S/)'],
+      data.advances.map(a=>[a.concepto, a.fecha, a.perro, fmtMny(a.amount)])
+    ) : '<p style="color:#888;font-size:12px">Sin pagos adelantados en el período.</p>'}
   </body></html>`;
 
   _downloadHTML(content, `aldea_informe_${fromLabel}_${toLabel}.html`);
