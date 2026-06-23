@@ -6514,6 +6514,7 @@ function renderIncome() {
   const pendStays = allStaysGlobal.filter(s => getPendingAmount(s) > 0).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
   const pendRest  = allRestGlobal.filter(r => !r.paid).sort((a,b) => a.date.localeCompare(b.date));
   const pendResArr= DB.reservas.filter(r => r.status === 'pendiente' && Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)) > 0);
+  const invalidResArr = DB.reservas.filter(r => r.status === 'pendiente' && r.type === 'hospedaje' && !r.open_ended && r.check_out_date && r.reserved_from && r.check_out_date <= r.reserved_from);
 
   const pendItems = [];
   pendStays.forEach(s => {
@@ -6646,6 +6647,18 @@ function renderIncome() {
 
   // ── POTENCIALES ──
   pendHTML += secHeader('Pendientes de cobro potenciales (reservas)', potencialTotal, 'var(--blue-50)');
+  if (invalidResArr.length) {
+    pendHTML += invalidResArr.map(r => {
+      const dog = DB.getDog(r.dog_id);
+      return `<div style="border:1px solid var(--red-400);border-radius:var(--radius);margin-bottom:12px;padding:10px 14px;background:var(--red-50);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div>
+          <strong>⚠️ Reserva con fechas inválidas:</strong> <strong>${dog?.name||'?'}</strong>
+          <span class="text-muted text-sm"> — salida (${fmtDate(r.check_out_date)}) es anterior o igual al ingreso (${fmtDate(r.reserved_from)})</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="openReservaModal(${r.id})">✏️ Corregir reserva</button>
+      </div>`;
+    }).join('');
+  }
   if (pendResArr.length) {
     const resItems = [];
     pendResArr.forEach(r => {
@@ -9187,6 +9200,7 @@ function init() {
   // Auto-update vacation statuses
   checkVacationStatus();
   initHolidays();
+  _repairOrphanedReservaStays();
   renderDashboard();
   updateMedsAlertDot();
   updateAllergiesAlertDot();
@@ -11703,14 +11717,25 @@ function setReservaStatus(id, newStatus) {
   }
   if (!confirm(confirmMsg)) return;
 
-  if (wasActive && linkedStayId) {
-    DB.saveStays(DB.stays.filter(s => s.id !== linkedStayId));
-    DB.savePayments(DB.payments.filter(p => p.stay_id !== linkedStayId));
+  if (wasActive && r.type === 'hospedaje') {
+    // Delete ALL stays linked to this reserva: by stored ID, by from_reserva_id, or by dog+date (pre-fix data)
+    const toDeleteIds = new Set(
+      DB.stays
+        .filter(s => s.id === linkedStayId || s.from_reserva_id === r.id || (s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && !s.pickup_time))
+        .map(s => s.id)
+    );
+    DB.saveStays(DB.stays.filter(s => !toDeleteIds.has(s.id)));
+    DB.savePayments(DB.payments.filter(p => !toDeleteIds.has(p.stay_id)));
     delete r.activated_stay_id;
   }
-  if (wasActive && linkedDcId) {
-    DB.saveDaycares(DB.daycares.filter(d => d.id !== linkedDcId));
-    DB.savePayments(DB.payments.filter(p => p.stay_id !== linkedDcId));
+  if (wasActive && r.type === 'daycare') {
+    const dcToDeleteIds = new Set(
+      DB.daycares
+        .filter(d => d.id === linkedDcId || d.from_reserva_id === r.id || (d.dog_id === r.dog_id && d.date === r.date))
+        .map(d => d.id)
+    );
+    DB.saveDaycares(DB.daycares.filter(d => !dcToDeleteIds.has(d.id)));
+    DB.savePayments(DB.payments.filter(p => !dcToDeleteIds.has(p.stay_id)));
     delete r.activated_dc_id;
   }
   r.status = newStatus;
@@ -11723,9 +11748,69 @@ function setReservaStatus(id, newStatus) {
   }
 }
 
+function _repairOrphanedReservaStays() {
+  // Delete stays/dcs that were created from a reserva but the reserva is no longer active.
+  // Only auto-deletes if the stay has NO real payments (safe to remove without losing money data).
+  const reservas = DB.reservas;
+  const nonActiveHosp = reservas.filter(r => r.type === 'hospedaje' && r.status !== 'activa');
+  const nonActiveDc   = reservas.filter(r => r.type === 'daycare'   && r.status !== 'activa');
+  const pmtsArr = DB.payments;
+
+  const stayIdsToDelete = DB.stays
+    .filter(s => {
+      if (s.service_type !== 'hospedaje' || s.status === 'cancelado' || s.pickup_time) return false;
+      const orphaned = s.from_reserva_id
+        ? reservas.find(r => r.id === s.from_reserva_id && r.status !== 'activa')
+        : nonActiveHosp.find(r => r.dog_id === s.dog_id && r.reserved_from === s.check_in_date);
+      if (!orphaned) return false;
+      // Only delete if no real payments (advance-from-reserva payments have notes field)
+      const hasPmts = pmtsArr.some(p => p.stay_id === s.id);
+      return !hasPmts;
+    })
+    .map(s => s.id);
+
+  const dcIdsToDelete = DB.daycares
+    .filter(d => {
+      const orphaned = d.from_reserva_id
+        ? reservas.find(r => r.id === d.from_reserva_id && r.status !== 'activa')
+        : nonActiveDc.find(r => r.dog_id === d.dog_id && r.date === d.date);
+      if (!orphaned) return false;
+      const hasPmts = pmtsArr.some(p => p.stay_id === d.id);
+      return !hasPmts;
+    })
+    .map(d => d.id);
+
+  if (stayIdsToDelete.length > 0) {
+    DB.saveStays(DB.stays.filter(s => !stayIdsToDelete.includes(s.id)));
+    DB.savePayments(DB.payments.filter(p => !stayIdsToDelete.includes(p.stay_id)));
+  }
+  if (dcIdsToDelete.length > 0) {
+    DB.saveDaycares(DB.daycares.filter(d => !dcIdsToDelete.includes(d.id)));
+    DB.savePayments(DB.payments.filter(p => !dcIdsToDelete.includes(p.stay_id)));
+  }
+}
+
 function activateReserva(id) {
   const r = DB.reservas.find(x => x.id === id);
   if (!r) return;
+
+  // Idempotency guard — block double activation
+  if (r.type === 'hospedaje') {
+    const existingLinked = r.activated_stay_id && DB.stays.find(s => s.id === r.activated_stay_id);
+    const existingByDate = !existingLinked && DB.stays.find(s => s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && !s.pickup_time && s.status !== 'cancelado');
+    if (existingLinked || existingByDate) {
+      alert('⚠️ Esta reserva ya fue activada y ya tiene un registro de hospedaje asociado en ingresos. Para modificar el estado, primero pásala a Pendiente o Caída desde la pestaña Activadas.');
+      return;
+    }
+  } else {
+    const existingDcLinked = r.activated_dc_id && DB.daycares.find(d => d.id === r.activated_dc_id);
+    const existingDcByDate = !existingDcLinked && DB.daycares.find(d => d.dog_id === r.dog_id && d.date === r.date);
+    if (existingDcLinked || existingDcByDate) {
+      alert('⚠️ Esta reserva ya fue activada y ya tiene un registro de daycare asociado en ingresos.');
+      return;
+    }
+  }
+
   if (r.type === 'hospedaje') {
     const stays = DB.stays;
     const newStay = {
@@ -11735,7 +11820,8 @@ function activateReserva(id) {
       rate_type: r.rate_type || 'nightly', service_type: 'hospedaje', status: 'activo',
       notes: r.notes, is_exchange: !!r.is_exchange, late_pickup: false,
       discount_pct: r.discount_pct || 0,
-      custom_holidays: r.custom_holidays
+      custom_holidays: r.custom_holidays,
+      from_reserva_id: r.id
     };
     stays.push(newStay);
     const advPmts = r.advance_payments?.length ? r.advance_payments
@@ -11759,7 +11845,7 @@ function activateReserva(id) {
     const newDc = { id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
       notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
       discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined,
-      custom_holidays: dcHols };
+      custom_holidays: dcHols, from_reserva_id: r.id };
     dcs.push(newDc);
     const dcAdvPmts = r.advance_payments?.length ? r.advance_payments
       : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
