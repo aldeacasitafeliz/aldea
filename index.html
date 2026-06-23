@@ -2597,6 +2597,12 @@ function getPaidAmount(stayId) {
 function getPendingAmount(stay) {
   return Math.max(0, calcStayTotal(stay) - getPaidAmount(stay.id));
 }
+function getDcPaidAmount(dc) {
+  return getPaidAmount(dc.id) + (parseFloat(dc.advance_paid) || 0);
+}
+function getDcPendingAmount(dc) {
+  return Math.max(0, calcDaycareTotal(dc) - getDcPaidAmount(dc));
+}
 function getDaysDebt(stay) {
   if (stay.open_ended) return 0; // open-ended: debt tracked differently
   if (getPendingAmount(stay) <= 0) return 0;
@@ -5103,6 +5109,58 @@ function deleteDaycare(id) {
   renderDaycareTable();
 }
 
+function openDcPaymentModal(dcId) {
+  const dc = DB.daycares.find(d => d.id === dcId);
+  if (!dc) return;
+  const dog = DB.getDog(dc.dog_id);
+  const total = calcDaycareTotal(dc);
+  const paid  = getDcPaidAmount(dc);
+  const pend  = getDcPendingAmount(dc);
+  const ctList = DB.caretakers.filter(c => c.status === 'activa').map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  const html = `<div style="padding:16px">
+    <div style="font-weight:600;margin-bottom:10px">Registrar pago — Daycare</div>
+    <div style="background:var(--gray-50);border:1px solid var(--border-md);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
+      <strong>${dog?.name||'?'} ${dog?.owner_last_name||''}</strong> &nbsp;·&nbsp; ${fmtDate(dc.date)}<br>
+      Total: <strong>${fmtMoney(total)}</strong> &nbsp;·&nbsp; Pagado: <strong style="color:var(--green-800)">${fmtMoney(paid)}</strong> &nbsp;·&nbsp; Pendiente: <strong style="color:var(--red-800)">${fmtMoney(pend)}</strong>
+    </div>
+    <div class="form-grid">
+      <div class="form-group"><label>Monto *</label><input type="number" id="dc-pay-amount" class="form-control" min="0" step="0.01" value="${pend.toFixed(2)}"></div>
+      <div class="form-group"><label>Fecha *</label><input type="date" id="dc-pay-date" class="form-control" value="${today()}"></div>
+      <div class="form-group span2"><label>Cuidadora que registra *</label><select id="dc-pay-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
+      <div class="form-group span2"><label>Notas</label><input type="text" id="dc-pay-notes" class="form-control" placeholder="Opcional..."></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-dc-pay')">Cancelar</button>
+      <button class="btn btn-primary" style="flex:1" onclick="saveDcPayment(${dcId})">✓ Registrar pago</button>
+    </div>
+  </div>`;
+  let overlay = document.getElementById('modal-dc-pay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-dc-pay';
+    overlay.innerHTML = `<div class="modal" style="max-width:480px" id="modal-dc-pay-inner"></div>`;
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('modal-dc-pay-inner').innerHTML = html;
+  openModal('modal-dc-pay');
+}
+
+function saveDcPayment(dcId) {
+  const amount = parseFloat(document.getElementById('dc-pay-amount')?.value) || 0;
+  const date   = document.getElementById('dc-pay-date')?.value;
+  const regCtId = parseInt(document.getElementById('dc-pay-reg-ct')?.value) || 0;
+  const notes  = document.getElementById('dc-pay-notes')?.value.trim();
+  if (!amount || amount <= 0) { alert('Ingresá un monto válido.'); return; }
+  if (!date) { alert('Ingresá la fecha del pago.'); return; }
+  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
+  const pmts = DB.payments;
+  pmts.push({ id: DB.nextId(pmts), stay_id: dcId, amount, date, note: notes || '', registered_by_ct_id: regCtId });
+  DB.savePayments(pmts);
+  closeModal('modal-dc-pay');
+  renderIncome();
+}
+
 let paymentStayId = null;
 let _payRowCount = 0;
 
@@ -6453,7 +6511,7 @@ function renderIncome() {
   const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && allStays.some(s => s.id === p.stay_id));
   const totalCobradoHosp  = paymentsInPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
   const totalFueraPeriodo = paymentsOutPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
-  const dcCobrado   = allDcs.reduce((s,d) => s + calcDaycareTotal(d), 0);
+  const dcCobrado   = allDcs.reduce((s,d) => s + getDcPaidAmount(d), 0);
   const restCobrado = allRest.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
 
   const totalResProyectado = pendingRes.reduce((s,r) => s + calcReservaTotal(r), 0);
@@ -6467,8 +6525,10 @@ function renderIncome() {
   const allStaysGlobal = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allRestGlobal  = DB.restaurant;
   const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente');
+  const allDcsGlobal = _reportDaycares();
   const totalPendienteEfectivo = allStaysGlobal.reduce((s,x) => s + getPendingAmount(x), 0)
-                               + allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0);
+                               + allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0)
+                               + allDcsGlobal.reduce((s,d) => s + getDcPendingAmount(d), 0);
   // Pendiente potencial = reservas pendientes no activadas
   const totalPendientePotencial = allPendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
   // Proyectados
@@ -6481,7 +6541,7 @@ function renderIncome() {
     <div class="stat-card coral">
       <div class="stat-label">Pendiente efectivo</div>
       <div class="stat-value">${fmtMoney(totalPendienteEfectivo)}</div>
-      <div class="stat-sub" style="color:var(--red-800);font-style:italic">hospedaje activo + restaurante</div>
+      <div class="stat-sub" style="color:var(--red-800);font-style:italic">hospedaje + daycare + restaurante</div>
     </div>
     <div class="stat-card" style="background:var(--blue-50);border-color:var(--blue-200)">
       <div class="stat-label" style="color:var(--blue-800)">Pendiente potencial</div>
@@ -6594,6 +6654,37 @@ function renderIncome() {
       </div>`);
   });
 
+  // Daycare con saldo pendiente
+  const pendDcs = allDcsGlobal.filter(d => getDcPendingAmount(d) > 0).sort((a,b) => a.date.localeCompare(b.date));
+  pendDcs.forEach(d => {
+    const dog = DB.getDog(d.dog_id);
+    const owner = getDogPrimaryOwner(dog);
+    const total = calcDaycareTotal(d);
+    const paid  = getDcPaidAmount(d);
+    const pend  = getDcPendingAmount(d);
+    pendItems.push(`
+      <div style="border:1px solid var(--blue-400);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
+        <div style="background:var(--blue-50);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <span class="badge badge-teal" style="margin-right:6px">Daycare</span>
+            <strong style="font-size:14px">${dog?.name||'?'}</strong>
+            <span class="text-muted text-sm"> ${dog?.owner_last_name||''}</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;color:var(--blue-800)">Debe ${fmtMoney(pend)}</div>
+        </div>
+        <div style="padding:10px 14px;font-size:12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px 16px">
+          <div><span class="text-muted">Fecha:</span> <strong>${fmtDate(d.date)}</strong></div>
+          <div><span class="text-muted">Total:</span> <strong>${fmtMoney(total)}</strong></div>
+          <div><span class="text-muted">Ya pagado:</span> <strong style="color:var(--green-800)">${fmtMoney(paid)}</strong></div>
+          ${owner?.phone ? `<div><span class="text-muted">Teléfono:</span> <strong>${owner.phone}</strong></div>` : ''}
+        </div>
+        <div style="padding:8px 14px;background:var(--surface);border-top:1px solid var(--border);display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="openDcPaymentModal(${d.id})">💰 Registrar pago</button>
+          <button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${d.id})">✏️ Ver</button>
+        </div>
+      </div>`);
+  });
+
   // reservas se renderizan en sección potencial separada — bloque eliminado
   if (false) pendResArr.forEach(r => {
     const dog = DB.getDog(r.dog_id);
@@ -6630,7 +6721,8 @@ function renderIncome() {
     </div>`;
 
   const efectivoTotal = allStaysGlobal.reduce((s,x)=>s+getPendingAmount(x),0)
-                      + allRestGlobal.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0);
+                      + allRestGlobal.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0)
+                      + allDcsGlobal.reduce((s,d)=>s+getDcPendingAmount(d),0);
   const potencialTotal = pendResArr.reduce((s,r)=>s+Math.max(0,calcReservaTotal(r)-_reservaAdvanceTotal(r)),0);
 
   let pendHTML = '';
@@ -7109,44 +7201,83 @@ function renderSalidasHistory() {
     (!to   || s.check_out_date <= to)
   ).sort((a, b) => b.check_out_date.localeCompare(a.check_out_date));
 
+  const pickedDcs = DB.daycares.filter(d =>
+    d.departure_time &&
+    (!from || d.date >= from) &&
+    (!to   || d.date <= to)
+  ).sort((a, b) => b.date.localeCompare(a.date));
+
   const el = document.getElementById('salidas-history-wrap');
-  if (!picked.length) {
+  if (!picked.length && !pickedDcs.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>No hay recojos registrados${from||to?' en ese período':''}.</p></div>`;
     return;
   }
 
-  el.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
-    <table>
-      <thead><tr>
-        <th>Perro</th><th>Dueño</th><th>Fecha salida</th><th>Hora recojo</th>
-        <th>Tarifa día salida</th><th>Total final</th><th>Pendiente</th>
-        <th>Observaciones</th><th>Registrado por</th><th>Registrado el</th>
-      </tr></thead>
-      <tbody>${picked.map(s => {
-        const dog  = DB.getDog(s.dog_id);
-        const total = calcStayTotal(s);
-        const paid  = getPaidAmount(s.id);
-        const pend  = total - paid;
-        const regAt = s.pickup_registered_at
-          ? new Date(s.pickup_registered_at).toLocaleString('es-PE', { dateStyle:'short', timeStyle:'short' })
-          : '—';
-        return `<tr>
-          <td><strong>${dog?.name || '?'}</strong></td>
-          <td class="text-sm">${dog?.owner_last_name || '—'}</td>
-          <td class="text-sm">${fmtDate(s.check_out_date)}</td>
-          <td class="text-sm">${s.pickup_time || '—'}</td>
-          <td>${s.late_pickup
-            ? '<span class="chip" style="background:var(--amber-50);color:var(--amber-800)">Tarifa completa</span>'
-            : '<span class="chip">Media tarifa</span>'}</td>
-          <td><strong>${fmtMoney(total)}</strong></td>
-          <td style="color:${pend > 0 ? 'var(--red-800)' : 'var(--green-800)'};font-weight:${pend > 0 ? '600' : '400'}">${fmtMoney(pend)}</td>
-          <td class="text-sm text-muted">${s.pickup_notes || '—'}</td>
-          <td class="text-sm text-muted">${s.pickup_user || '—'}</td>
-          <td class="text-sm text-muted">${regAt}</td>
-        </tr>`;
-      }).join('')}</tbody>
-    </table>
-  </div>`;
+  let html = '';
+
+  if (picked.length) {
+    html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">🏠 Hospedaje</div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">
+      <table>
+        <thead><tr>
+          <th>Perro</th><th>Dueño</th><th>Fecha salida</th><th>Hora recojo</th>
+          <th>Tarifa día salida</th><th>Total final</th><th>Pendiente</th>
+          <th>Observaciones</th><th>Registrado por</th>
+        </tr></thead>
+        <tbody>${picked.map(s => {
+          const dog  = DB.getDog(s.dog_id);
+          const total = calcStayTotal(s);
+          const paid  = getPaidAmount(s.id);
+          const pend  = total - paid;
+          const ct = DB.caretakers.find(c => c.id === s.pickup_reg_ct_id);
+          return `<tr>
+            <td><strong>${dog?.name || '?'}</strong></td>
+            <td class="text-sm">${dog?.owner_last_name || '—'}</td>
+            <td class="text-sm">${fmtDate(s.check_out_date)}</td>
+            <td class="text-sm">${s.pickup_time || '—'}</td>
+            <td>${s.late_pickup
+              ? '<span class="chip" style="background:var(--amber-50);color:var(--amber-800)">Tarifa completa</span>'
+              : '<span class="chip">Media tarifa</span>'}</td>
+            <td><strong>${fmtMoney(total)}</strong></td>
+            <td style="color:${pend > 0 ? 'var(--red-800)' : 'var(--green-800)'};font-weight:${pend > 0 ? '600' : '400'}">${fmtMoney(pend)}</td>
+            <td class="text-sm text-muted">${s.pickup_notes || '—'}</td>
+            <td class="text-sm text-muted">${ct?.name || s.pickup_user || '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  }
+
+  if (pickedDcs.length) {
+    html += `<div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">☀️ Daycare</div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table>
+        <thead><tr>
+          <th>Perro</th><th>Dueño</th><th>Fecha</th><th>Hora salida</th>
+          <th>Total</th><th>Pagado</th><th>Pendiente</th><th>Registrado por</th>
+        </tr></thead>
+        <tbody>${pickedDcs.map(d => {
+          const dog  = DB.getDog(d.dog_id);
+          const total = calcDaycareTotal(d);
+          const paid  = getDcPaidAmount(d);
+          const pend  = getDcPendingAmount(d);
+          const ct = DB.caretakers.find(c => c.id === d.registered_by_ct_id);
+          return `<tr>
+            <td><strong>${dog?.name || '?'}</strong></td>
+            <td class="text-sm">${dog?.owner_last_name || '—'}</td>
+            <td class="text-sm">${fmtDate(d.date)}</td>
+            <td class="text-sm">${d.departure_time}</td>
+            <td><strong>${fmtMoney(total)}</strong></td>
+            <td style="color:var(--green-800)">${fmtMoney(paid)}</td>
+            <td style="color:${pend > 0 ? 'var(--red-800)' : 'var(--green-800)'};font-weight:${pend > 0 ? '600' : '400'}">${fmtMoney(pend)}</td>
+            <td class="text-sm text-muted">${ct?.name || '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  }
+
+  el.innerHTML = html;
 }
 
 function clearSalidasHistFilter() {
