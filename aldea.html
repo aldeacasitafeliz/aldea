@@ -11590,6 +11590,7 @@ function saveReserva() {
     const rate = parseFloat(document.getElementById('res-rate-h').value);
     if (!cin) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la fecha de ingreso.</div>'; return; }
     if (!open && !cout) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la fecha de salida o marcá "Sin fecha de salida".</div>'; return; }
+    if (!open && cout <= cin) { alerts.innerHTML = '<div class="alert alert-danger">La fecha de salida debe ser posterior a la fecha de ingreso.</div>'; return; }
     if (!rate) { alerts.innerHTML = '<div class="alert alert-danger">Ingresá la tarifa.</div>'; return; }
     const advRows = [...document.querySelectorAll('#res-advance-rows > div')].map(row => ({
       amount: parseFloat(row.querySelector('.res-adv-amount')?.value) || 0,
