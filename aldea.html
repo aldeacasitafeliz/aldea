@@ -6024,7 +6024,7 @@ function renderIncome() {
     <div class="stat-card green"><div class="stat-label">Cobrado en el período</div><div class="stat-value">${fmtMoney(totalPagado)}</div><div class="stat-sub">pagos${totalResAdv > 0 ? ` · ${fmtMoney(totalResAdv)} adelantos reservas` : ''}</div></div>
     <div class="stat-card teal"><div class="stat-label">Ingreso proyectado</div><div class="stat-value">${fmtMoney(totalPagado + totalPendiente)}</div><div class="stat-sub">cobrado + pendiente</div></div>
     <div class="stat-card amber"><div class="stat-label">Con deuda</div><div class="stat-value">${deudores}</div><div class="stat-sub">perro(s)</div></div>
-    ${pendingRes.length ? `<div class="stat-card" style="background:var(--green-700);color:#fff"><div class="stat-label" style="color:rgba(255,255,255,0.8)">Reservas pendientes</div><div class="stat-value">${fmtMoney(totalResProyectado)}</div><div class="stat-sub" style="color:rgba(255,255,255,0.7)">${pendingRes.length} reserva(s) en el período</div></div>` : ''}`;
+  `;
 
   // TAB: PENDIENTE
   const pendStays = allStaysGlobal.filter(s => getPendingAmount(s) > 0).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
