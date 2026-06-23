@@ -6069,7 +6069,7 @@ function _renderDebtBreakdown() {
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${isCustom
           ? `<button class="btn btn-secondary btn-sm" onclick="_debtResetHolidays()">↺ Restaurar globales</button>`
-          : `<button class="btn btn-secondary btn-sm" onclick="_debtCustomizeHolidays()">✏️ Personalizar</button>`}
+          : `<button class="btn btn-secondary btn-sm" onclick="_debtCustomizeHolidays()">✏️ Editar</button>`}
       </div>
     </div>`;
 
@@ -6102,14 +6102,14 @@ function _debtCustomizeHolidays() {
   const autoHols = getHolidaysInRange(stay.check_in_date, effectiveOut)
     .filter(h => h.date >= stay.check_in_date && h.date < effectiveOut);
   stay.custom_holidays = autoHols.map(h => ({ date: h.date, name: h.name }));
-  DB.saveStays(); _renderDebtBreakdown();
+  DB.saveStays(DB.stays); _renderDebtBreakdown();
 }
 
 function _debtResetHolidays() {
   const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
   if (!stay) return;
   delete stay.custom_holidays;
-  DB.saveStays(); _renderDebtBreakdown();
+  DB.saveStays(DB.stays); _renderDebtBreakdown();
 }
 
 function _debtAddHoliday() {
@@ -6121,14 +6121,14 @@ function _debtAddHoliday() {
   if (stay.custom_holidays.some(h => h.date === dateVal)) { alert('Ese feriado ya existe.'); return; }
   stay.custom_holidays.push({ date: dateVal, name: nameVal });
   stay.custom_holidays.sort((a,b) => a.date.localeCompare(b.date));
-  DB.saveStays(); _renderDebtBreakdown();
+  DB.saveStays(DB.stays); _renderDebtBreakdown();
 }
 
 function _debtRemoveHoliday(date) {
   const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
   if (!stay || !Array.isArray(stay.custom_holidays)) return;
   stay.custom_holidays = stay.custom_holidays.filter(h => h.date !== date);
-  DB.saveStays(); _renderDebtBreakdown();
+  DB.saveStays(DB.stays); _renderDebtBreakdown();
 }
 
 function renderIncome() {
