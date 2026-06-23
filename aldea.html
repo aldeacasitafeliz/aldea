@@ -6431,9 +6431,9 @@ function renderIncome() {
   const effectiveOut = s => (s.open_ended || !s.check_out_date) ? '9999-12-31' : s.check_out_date;
   const overlapsPeriod = s => (!from || effectiveOut(s) >= from) && (!to || s.check_in_date <= to);
 
-  const allStaysRaw = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  const allStaysRaw = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allStays    = allStaysRaw.filter(overlapsPeriod);
-  const allDcsRaw   = DB.daycares;
+  const allDcsRaw   = _reportDaycares();
   const allDcs      = allDcsRaw.filter(d => inRange(d.date));
   const allRestRaw  = DB.restaurant;
   const allRest     = allRestRaw.filter(r => inRange(r.date));
@@ -6464,7 +6464,7 @@ function renderIncome() {
   const totalPagado = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
 
   // Pendiente efectivo = hospedajes + restaurante (SIN reservas)
-  const allStaysGlobal = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  const allStaysGlobal = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allRestGlobal  = DB.restaurant;
   const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente');
   const totalPendienteEfectivo = allStaysGlobal.reduce((s,x) => s + getPendingAmount(x), 0)
@@ -9685,8 +9685,8 @@ function exportAIPDF() {
   const overlaps = s => (s.open_ended ? s.check_in_date <= to : s.check_out_date >= from && s.check_in_date <= to);
 
   // PERIOD data
-  const stays   = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado' && overlaps(s));
-  const dcs     = DB.daycares.filter(d => inRange(d.date));
+  const stays   = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado' && overlaps(s));
+  const dcs     = _reportDaycares().filter(d => inRange(d.date));
   const rests   = DB.restaurant.filter(r => inRange(r.date));
   const allPays = DB.payments;
   const cts     = DB.caretakers;
@@ -10179,8 +10179,8 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const effectiveOutI = s => (s.open_ended || !s.check_out_date) ? '9999-12-31' : s.check_out_date;
     const overlapsPeriodI = s => effectiveOutI(s) >= from && s.check_in_date <= to;
 
-    const iStays    = DB.stays.filter(s => s.service_type==='hospedaje' && s.status!=='cancelado' && overlapsPeriodI(s));
-    const iDcs      = DB.daycares.filter(d => inRangeI(d.date));
+    const iStays    = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado' && overlapsPeriodI(s));
+    const iDcs      = _reportDaycares().filter(d => inRangeI(d.date));
     const iRest     = DB.restaurant.filter(r => inRangeI(r.date));
     const iPendRes  = DB.reservas.filter(r => r.status==='pendiente');
 
@@ -10192,7 +10192,7 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const totalResAdv      = resWithAdv.reduce((s,r)=>s+_reservaAdvanceTotal(r),0);
     const totalPagadoI     = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
 
-    const iStaysGlobal   = DB.stays.filter(s=>s.service_type==='hospedaje'&&s.status!=='cancelado');
+    const iStaysGlobal   = _reportStays().filter(s=>s.service_type==='hospedaje'&&s.status!=='cancelado');
     const iRestGlobal    = DB.restaurant;
     const totalPendienteI= iStaysGlobal.reduce((s,x)=>s+getPendingAmount(x),0)
                          + iRestGlobal.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0)
@@ -10296,8 +10296,8 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
   {
     const rc_DIAS = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
     const rc_days = datesInRange(from, to);
-    const rc_stays = DB.stays.filter(s => s.service_type==='hospedaje' && s.status!=='cancelado' && s.check_out_date>=from && s.check_in_date<=to);
-    const rc_dcs   = DB.daycares.filter(d => d.date>=from && d.date<=to);
+    const rc_stays = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado' && s.check_out_date>=from && s.check_in_date<=to);
+    const rc_dcs   = _reportDaycares().filter(d => d.date>=from && d.date<=to);
     const rc_mk = ids => {
       const dogs = ids.map(id=>DB.getDog(id)).filter(Boolean);
       return { n:ids.length, males:dogs.filter(d=>d.sex==='macho').length, females:dogs.filter(d=>d.sex==='hembra').length,
@@ -10306,9 +10306,9 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
         ju:dogs.filter(d=>d.behavior_primary==='juguetón').length, fa:dogs.filter(d=>d.behavior_primary==='fácil').length };
     };
     const rc_daily = rc_days.map(d => {
-      const hosted  = DB.stays.filter(s=>s.service_type==='hospedaje'&&s.check_in_date<=d&&s.check_out_date>d&&s.status!=='cancelado');
-      const leaving = DB.stays.filter(s=>s.service_type==='hospedaje'&&s.check_out_date===d&&s.status!=='cancelado');
-      const dcDay   = DB.daycares.filter(dc=>dc.date===d);
+      const hosted  = _reportStays().filter(s=>s.service_type==='hospedaje'&&s.check_in_date<=d&&s.check_out_date>d&&s.status!=='cancelado');
+      const leaving = _reportStays().filter(s=>s.service_type==='hospedaje'&&s.check_out_date===d&&s.status!=='cancelado');
+      const dcDay   = _reportDaycares().filter(dc=>dc.date===d);
       const presentIds = [...new Set([...hosted.map(s=>s.dog_id),...leaving.map(s=>s.dog_id),...dcDay.map(dc=>dc.dog_id)])];
       const sleepIds   = hosted.map(s=>s.dog_id);
       const dow = new Date(d+'T12:00:00').getDay();
@@ -10523,8 +10523,8 @@ function setExportPeriod(mode) {
 
 function buildExportData(from, to) {
   const inRange = (date) => (!from || date >= from) && (!to || date <= to);
-  const stays   = DB.stays.filter(s => s.status !== 'cancelado' && (inRange(s.check_in_date) || inRange(s.check_out_date) || (s.check_in_date <= (to||'9999') && s.check_out_date >= (from||'0000'))));
-  const dcs     = DB.daycares.filter(d => inRange(d.date));
+  const stays   = _reportStays().filter(s => s.status !== 'cancelado' && (inRange(s.check_in_date) || inRange(s.check_out_date) || (s.check_in_date <= (to||'9999') && s.check_out_date >= (from||'0000'))));
+  const dcs     = _reportDaycares().filter(d => inRange(d.date));
   const incs    = DB.incidents.filter(i => inRange(i.date));
   const vacs    = DB.vacations.filter(v => inRange(v.start_dt?.slice(0,10)));
   const fdShifts = DB.feedingShifts.filter(f => inRange(f.date));
@@ -11778,6 +11778,18 @@ function _migrateAllReservasToPendiente() {
   }
 
   localStorage.setItem('aldea_mig_reservas_pendiente_v1', '1');
+}
+
+// Returns only stays that are NOT orphaned from a non-active reserva.
+// Used by all reports/exports/income as the single source of truth.
+function _reportStays() {
+  const activeReservaIds = new Set(DB.reservas.filter(r => r.status === 'activa').map(r => r.id));
+  return DB.stays.filter(s => !s.from_reserva_id || activeReservaIds.has(s.from_reserva_id));
+}
+
+function _reportDaycares() {
+  const activeReservaIds = new Set(DB.reservas.filter(r => r.status === 'activa').map(r => r.id));
+  return DB.daycares.filter(d => !d.from_reserva_id || activeReservaIds.has(d.from_reserva_id));
 }
 
 function _repairOrphanedReservaStays() {
