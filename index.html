@@ -9744,7 +9744,10 @@ BLOQUE C — FINANZAS DEL PERÍODO
  16. Perros con deuda
 
 BLOQUE D — ANÁLISIS DEL PERÍODO
- 17. Resumen completo — ocupación, machos/hembras, tamaños, comportamientos con % y consolidados, Top 10 clientes con desglose de pagos</div>`;
+ 17. Resumen completo — ocupación, machos/hembras, tamaños, comportamientos con % y consolidados, Top 10 clientes con desglose de pagos
+
+BLOQUE E — AUDITORÍA DE REGISTROS (global, sin filtro de período)
+ 18. Actividad por cuidadora — quién registró qué, cantidad y % por tipo de registro (hospedaje, recojo, daycare, pago, incidencia, conflicto, integración, turno alimentación, turno teléfono, asignación, nuevo perro, restaurante, reserva, medicamento)</div>`;
 
   // ══════════════════════════════════════════════════════════════════
   // BLOQUE A — CATÁLOGO COMPLETO (sin filtro de período)
@@ -9820,6 +9823,7 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
   if (allIntgs.length) {
     allIntgs.sort((a,b)=>(a.date||'').localeCompare(b.date||'')).forEach((ig, i) => {
       const ctNames = (ig.caretaker_ids||[]).map(cid => cts.find(c=>c.id===cid)?.name||cid).join(', ');
+      const regCt = cts.find(c => c.id === ig.registered_by_ct_id);
       html += sub(`Integración ${i+1}: ${ig.dog_name||'?'} — ${ig.date||'sin fecha'}`);
       html += kv('Perro', miss(ig.dog_name));
       html += kv('Contacto', miss(ig.contact_name));
@@ -9827,6 +9831,7 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
       html += kv('Fecha', fmtD(ig.date));
       html += kv('Hora', miss(ig.time));
       html += kv('Cuidadoras asignadas', ctNames||'sin asignar');
+      html += kv('Cuidadora que registró', regCt?.name || (ig.registered_by_ct_id ? `ID ${ig.registered_by_ct_id}` : 'dato pendiente'));
       html += kv('Resultado', miss(ig.result));
       if (ig.result === 'rechazado') html += kv('Motivo rechazo', miss(ig.rejection_reason));
       html += kv('Notas', miss(ig.notes));
@@ -9838,38 +9843,49 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
   html += `<p style="font-size:11px">Total incidencias: ${allIncs.length}</p>`;
   if (allIncs.length) {
     allIncs.sort((a,b)=>a.date.localeCompare(b.date)).forEach((inc, i) => {
-      const aggressor = DB.getDog(inc.aggressor_id);
-      const victims   = (inc.victim_ids||[]).map(id => DB.getDog(id)?.name||'desconocido');
+      const dogsInInc = (inc.dogs||[]);
+      const aggressors = dogsInInc.filter(d=>d.role==='agresor').map(d=>DB.getDog(d.dog_id)?.name||'?');
+      const victims    = dogsInInc.filter(d=>d.role!=='agresor').map(d=>DB.getDog(d.dog_id)?.name||'?');
+      const regCt = cts.find(c => c.id === inc.registered_by_ct_id);
       html += sub(`Incidencia ${i+1}: ${fmtDate(inc.date)}`);
       html += kv('Fecha', fmtD(inc.date));
       html += kv('Tipo', miss(inc.type));
-      html += kv('Agresor', miss(aggressor?.name));
-      html += kv('Víctimas', victims.length ? victims.join(', ') : 'sin víctimas registradas');
+      html += kv('Agresor(es)', aggressors.length ? aggressors.join(', ') : 'sin agresor registrado');
+      html += kv('Víctima(s)', victims.length ? victims.join(', ') : 'sin víctimas registradas');
+      html += kv('Perros involucrados', dogsInInc.map(d=>`${DB.getDog(d.dog_id)?.name||'?'} (${d.role||'?'})`).join(', ') || 'sin registrar');
       html += kv('Descripción', miss(inc.description));
       html += kv('Acciones tomadas', miss(inc.actions));
-      html += kv('Cuidadora presente', miss(inc.caretaker_name));
+      html += kv('Cuidadora que registró', regCt?.name || (inc.registered_by_ct_id ? `ID ${inc.registered_by_ct_id}` : 'dato pendiente'));
     });
   } else { html += '<p style="font-size:12px;color:green">Sin incidencias registradas.</p>'; }
 
   // ── SECCIÓN 4: RELACIONES COMPLICADAS (TODAS) ──
   html += sec('4. RELACIONES COMPLICADAS — CONFLICTOS HISTÓRICOS');
-  const complicatedAll = allDogs.flatMap(dog =>
-    (dog.conflicts||[]).map(c => ({ from: dog.name, to: DB.getDog(c.dog_id)?.name||'desconocido', type: c.type, notes: c.notes }))
-  );
+  const allConflicts = DB.conflicts || [];
+  html += `<p style="font-size:11px">Total conflictos registrados: ${allConflicts.length}</p>`;
+  html += sub('Conflictos registrados en el sistema:');
+  if (allConflicts.length) {
+    allConflicts.forEach((c, ci) => {
+      const dogA = DB.getDog(c.dog_a_id);
+      const dogB = DB.getDog(c.dog_b_id);
+      const regCt = cts.find(x => x.id === c.registered_by_ct_id);
+      html += kv(`Conflicto ${ci+1}`, `${dogA?.name||'?'} ↔ ${dogB?.name||'?'}`);
+      html += kv(`  Motivo`, miss(c.reason));
+      html += kv(`  Fecha registro`, fmtD(c.date));
+      html += kv(`  Origen`, c.origin === 'incidencia' ? 'derivado de incidencia' : 'registro manual');
+      html += kv(`  Notas`, miss(c.notes));
+      html += kv(`  Cuidadora que registró`, regCt?.name || (c.registered_by_ct_id ? `ID ${c.registered_by_ct_id}` : 'dato pendiente'));
+    });
+  } else { html += kv('Estado', 'sin relaciones complicadas registradas'); }
+  html += sub('Pares agresor-víctima por incidencia (histórico completo):');
   const allIncidentPairs = [];
   allIncs.forEach(inc => {
-    const agg = DB.getDog(inc.aggressor_id);
-    (inc.victim_ids||[]).forEach(vid => {
-      const vic = DB.getDog(vid);
-      allIncidentPairs.push(`${agg?.name||'?'} → ${vic?.name||'?'} (${fmtDate(inc.date)})`);
-    });
+    const aggressors = (inc.dogs||[]).filter(d=>d.role==='agresor').map(d=>DB.getDog(d.dog_id)?.name||'?');
+    const victims    = (inc.dogs||[]).filter(d=>d.role!=='agresor').map(d=>DB.getDog(d.dog_id)?.name||'?');
+    if (aggressors.length && victims.length) allIncidentPairs.push(`${aggressors.join('+')} → ${victims.join('+')} (${fmtDate(inc.date)})`);
   });
-  html += sub('Relaciones manuales registradas:');
-  if (complicatedAll.length) { complicatedAll.forEach(r => { html += kv(`${r.from} → ${r.to}`, `${r.type||'conflicto'} — ${r.notes||'sin notas'}`); }); }
-  else { html += kv('Estado', 'sin relaciones complicadas manuales'); }
-  html += sub('Pares agresor-víctima por incidencia (histórico completo):');
   if (allIncidentPairs.length) { allIncidentPairs.forEach(p => { html += `<div style="font-size:12px;margin:2px 0">• ${p}</div>`; }); }
-  else { html += kv('Estado', 'sin incidencias registradas'); }
+  else { html += kv('Estado', 'sin pares agresor-víctima registrados'); }
 
   // ══════════════════════════════════════════════════════════════════
   // BLOQUE B — ACTIVIDAD DEL PERÍODO
@@ -9878,7 +9894,8 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
 
   // ── SECCIÓN 5: HOSPEDAJES ──
   html += sec('5. HOSPEDAJES DEL PERÍODO');
-  html += `<p style="font-size:11px">Total hospedajes: ${stays.length} | Abiertos (sin fecha salida): ${stays.filter(s=>s.open_ended).length}</p>`;
+  const overdueStaysPdf = stays.filter(s => !s.open_ended && s.check_out_date && s.check_out_date < to && !s.pickup_time && s.status !== 'finalizado');
+  html += `<p style="font-size:11px">Total hospedajes: ${stays.length} | Abiertos (sin fecha salida): ${stays.filter(s=>s.open_ended).length} | ⚠ Salida vencida sin confirmar: ${overdueStaysPdf.length}</p>`;
   stays.forEach((s, i) => {
     const dog  = DB.getDog(s.dog_id);
     const paid = getPaidAmount(s.id);
@@ -9886,38 +9903,48 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
     const total= calcStayTotal(s);
     const pays = allPays.filter(p => p.stay_id === s.id);
     const asgns= getAssignments(s.id,'hospedaje');
-    html += sub(`Hospedaje ${i+1}: ${dog?.name||'SIN NOMBRE'} (ID stay: ${s.id})`);
+    const isOverdue = !s.open_ended && s.check_out_date && s.check_out_date < to && !s.pickup_time && s.status !== 'finalizado';
+    const regCt = cts.find(c => c.id === s.registered_by_ct_id);
+    const pickupCt = cts.find(c => c.id === s.pickup_reg_ct_id || c.id === (s.registered_by_ct_id && s.pickup_time ? s.registered_by_ct_id : null));
+    html += sub(`Hospedaje ${i+1}: ${dog?.name||'SIN NOMBRE'} (ID stay: ${s.id})${isOverdue?' ⚠ SALIDA VENCIDA SIN CONFIRMAR':''}`);
+    if (isOverdue) html += `<div style="background:#fee2e2;border:1px solid #f87171;padding:6px 10px;margin:4px 0;font-size:11px;font-weight:700;color:#991b1b">⚠ SALIDA VENCIDA: debió salir el ${fmtDate(s.check_out_date)} — salida no confirmada. Total estimado puede diferir del final.</div>`;
     html += kv('Perro', miss(dog?.name));
     html += kv('Dueño', miss(getDogPrimaryOwner(dog)?.name));
     html += kv('Teléfono', miss(getDogPrimaryOwner(dog)?.phone));
+    html += kv('Cuidadora que registró el ingreso', regCt?.name || (s.registered_by_ct_id ? `ID ${s.registered_by_ct_id}` : 'dato pendiente'));
     html += kv('Fecha ingreso', fmtD(s.check_in_date));
-    html += kv('Fecha salida', s.open_ended ? 'SIN FECHA DE SALIDA (hospedaje abierto)' : fmtD(s.check_out_date));
+    html += kv('Fecha salida programada', s.open_ended ? 'SIN FECHA (hospedaje abierto)' : fmtD(s.check_out_date));
+    html += kv('Fecha salida efectiva', s.pickup_time ? fmtD(s.check_out_date) : (isOverdue ? '⚠ NO CONFIRMADA AÚN' : 'dato pendiente'));
+    html += kv('Salida difirió de lo programado', s.manual_total != null && !s.open_ended ? 'Sí — total recalculado al recojo' : 'No');
     html += kv('Estado hospedaje', miss(s.status));
-    html += kv('Tarifa', `${fm(s.daily_rate)} ${s.rate_type === 'nightly' ? 'por noche' : 'por día'}`);
+    html += kv('Tarifa diaria', `${fm(s.daily_rate || s.rate)} ${s.rate_type === 'nightly' ? 'por noche' : 'por día'}`);
     html += kv('Descuento', s.discount_pct > 0 ? `${s.discount_pct}%` : 'sin descuento');
     html += kv('Es canje', s.is_exchange ? 'SÍ' : 'No');
-    html += kv('Total calculado', fm(total) + (s.open_ended ? ' (estimado hasta hoy)' : ''));
+    html += kv('Total final calculado', fm(total) + (s.open_ended || isOverdue ? ' (estimado — salida no confirmada)' : s.manual_total != null ? ' (recalculado al recojo)' : ''));
     html += kv('Total pagado', fm(paid));
     html += kv('Saldo pendiente', fm(pend) + (pend > 0 ? ' ⚠️ CON DEUDA' : ''));
     if (pend > 0) html += kv('Días de deuda', getDaysDebt(s) > 0 ? `${getDaysDebt(s)} días` : 'aún no vence');
-    html += kv('Recojo registrado', s.pickup_registered_at ? `Sí, el ${fmtD(s.pickup_registered_at?.slice(0,10))} a las ${s.pickup_time||'hora no registrada'}` : 'dato pendiente');
+    html += kv('Recojo registrado', s.pickup_time ? `Sí — ${fmtD(s.check_out_date)} a las ${s.pickup_time}${s.late_pickup?' (TARDE)':''}` : 'NO REGISTRADO AÚN');
+    html += kv('Cuidadora que registró el recojo', s.pickup_time ? (cts.find(c=>c.id===s.registered_by_ct_id)?.name || 'dato pendiente') : '—');
     html += kv('Notas recojo', miss(s.pickup_notes));
-    html += kv('Canje', miss(s.is_exchange));
     html += kv('Recojo tarde', s.late_pickup ? 'Sí' : 'No');
     html += kv('Notas hospedaje', miss(s.notes));
     html += sub(`  Pagos (${pays.length}):`);
     if (pays.length) {
       pays.forEach((p, pi) => {
+        const pCt = cts.find(c => c.id === p.registered_by_ct_id);
         html += kv(`    Pago ${pi+1} fecha`, fmtD(p.date));
         html += kv(`    Pago ${pi+1} monto`, fm(p.amount));
         html += kv(`    Pago ${pi+1} nota`, miss(p.note));
+        html += kv(`    Pago ${pi+1} registrado por`, pCt?.name || (p.registered_by_ct_id ? `ID ${p.registered_by_ct_id}` : 'dato pendiente'));
       });
     } else { html += kv('    Estado', 'sin pagos registrados'); }
     html += sub(`  Cuidadoras asignadas (${asgns.length}):`);
     if (asgns.length) {
       asgns.forEach((a, ai) => {
         const ct = cts.find(c => c.id === a.caretaker_id);
-        html += kv(`    Asig ${ai+1}`, `${ct?.name||'dato pendiente'} del ${fmtD(a.from_dt?.slice(0,10))} al ${fmtD(a.to_dt?.slice(0,10))}`);
+        const rCt = cts.find(c => c.id === a.registered_by_ct_id);
+        html += kv(`    Asig ${ai+1}`, `${ct?.name||'dato pendiente'} del ${fmtD(a.from_dt?.slice(0,10))} al ${fmtD(a.to_dt?.slice(0,10))}${rCt?' (registrado por '+rCt.name+')':''}`);
       });
     } else { html += kv('    Estado', 'sin cuidadora asignada'); }
   });
@@ -9931,10 +9958,18 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
     html += sub(`Daycare ${fmtDate(date)} (${dcByDate[date].length} perros):`);
     dcByDate[date].forEach((dc, di) => {
       const dog = DB.getDog(dc.dog_id);
+      const regCt = cts.find(c => c.id === dc.registered_by_ct_id);
+      const exitCt = cts.find(c => c.id === dc.exit_registered_by_ct_id);
       html += kv(`  DC ${di+1} perro`, miss(dog?.name));
-      html += kv(`  DC ${di+1} tarifa`, fm(dc.rate));
+      html += kv(`  DC ${di+1} hora ingreso`, miss(dc.hora_ingreso));
+      html += kv(`  DC ${di+1} hora salida programada`, miss(dc.hora_salida));
+      html += kv(`  DC ${di+1} hora salida efectiva`, miss(dc.departure_time) || 'no registrada aún');
+      html += kv(`  DC ${di+1} salida difirió`, dc.departure_time && dc.hora_salida && dc.departure_time !== dc.hora_salida ? 'Sí' : 'No');
+      html += kv(`  DC ${di+1} tarifa`, fm(dc.rate) + (dc.billing_type === 'hourly' ? ` (por hora — ${dc.num_hours||'?'}h)` : ' (por sesión)'));
       html += kv(`  DC ${di+1} descuento`, dc.discount_pct > 0 ? `${dc.discount_pct}%` : 'sin descuento');
       html += kv(`  DC ${di+1} total`, fm(calcDaycareTotal(dc)));
+      html += kv(`  DC ${di+1} cuidadora que registró ingreso`, regCt?.name || (dc.registered_by_ct_id ? `ID ${dc.registered_by_ct_id}` : 'dato pendiente'));
+      html += kv(`  DC ${di+1} cuidadora que registró salida`, exitCt?.name || (dc.exit_registered_by_ct_id ? `ID ${dc.exit_registered_by_ct_id}` : (dc.departure_time ? 'dato pendiente' : '—')));
       html += kv(`  DC ${di+1} notas`, miss(dc.notes));
     });
   });
@@ -10370,6 +10405,65 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
       );
     });
   }
+
+  // ══════════════════════════════════════════════════════════════════
+  // BLOQUE E — REGISTRO DE ACTIVIDAD POR CUIDADORA
+  // ══════════════════════════════════════════════════════════════════
+  html += blk('BLOQUE E — QUIÉN REGISTRÓ QUÉ (global, sin filtro de período)');
+  html += sec('18. ACTIVIDAD DE REGISTRO POR CUIDADORA — TODOS LOS TIEMPOS');
+  html += `<p style="font-size:11px">Todos los registros del sistema con cuidadora que registra asignada, agrupados por cuidadora. Sirve para auditoría y métricas de actividad.</p>`;
+
+  const _allRegRecords = [];
+  const _pushReg = (type, ct_id, date, detail) => { if (ct_id) _allRegRecords.push({ type, ct_id, date, detail }); };
+
+  DB.stays.forEach(s => { _pushReg('Hospedaje ingreso', s.registered_by_ct_id, s.check_in_date, `${DB.getDog(s.dog_id)?.name||'?'} (${s.check_in_date} → ${s.check_out_date||'abierto'})`); });
+  DB.stays.filter(s=>s.pickup_time).forEach(s => { _pushReg('Recojo/salida', s.registered_by_ct_id, s.check_out_date, `${DB.getDog(s.dog_id)?.name||'?'} salida ${s.check_out_date}`); });
+  DB.daycares.forEach(d => { _pushReg('Daycare ingreso', d.registered_by_ct_id, d.date, `${DB.getDog(d.dog_id)?.name||'?'} (${d.date})`); });
+  DB.payments.forEach(p => { const s=DB.stays.find(x=>x.id===p.stay_id); _pushReg('Pago/cobro', p.registered_by_ct_id, p.date, `S/ ${p.amount} — ${DB.getDog(s?.dog_id)?.name||'?'}`); });
+  DB.incidents.forEach(i => { _pushReg('Incidencia', i.registered_by_ct_id, i.date, i.description?.slice(0,60)||'sin desc.'); });
+  DB.conflicts.forEach(c => { _pushReg('Conflicto', c.registered_by_ct_id, c.date, `${DB.getDog(c.dog_a_id)?.name||'?'} ↔ ${DB.getDog(c.dog_b_id)?.name||'?'}`); });
+  DB.integrations.forEach(i => { _pushReg('Integración', i.registered_by_ct_id, i.date, i.dog_name||'?'); });
+  DB.feedingShifts.forEach(f => { _pushReg('Turno alimentación', f.registered_by_ct_id, f.date, `Turno ${f.shift} — ${f.date}`); });
+  DB.phoneShifts.forEach(p => { _pushReg('Turno teléfono', p.registered_by_ct_id, p.date, p.date); });
+  DB.assignments.forEach(a => { _pushReg('Asignación cuidadora', a.registered_by_ct_id, a.from_dt?.slice(0,10), `${DB.getDog(a.dog_id)?.name||'?'} — ${a.from_dt?.slice(0,10)}`); });
+  DB.dogs.forEach(d => { _pushReg('Nuevo perro', d.registered_by_ct_id, d.created_at?.slice(0,10), d.name||'?'); });
+  DB.restaurant.forEach(r => { _pushReg('Restaurante', r.registered_by_ct_id, r.date, `${DB.getDog(r.dog_id)?.name||'?'} (${r.date})`); });
+  DB.reservas.forEach(r => { _pushReg('Reserva', r.registered_by_ct_id, r.created_at?.slice(0,10)||r.reserved_from, `${DB.getDog(r.dog_id)?.name||'?'} — ${r.type}`); });
+  DB_medLogs.all.forEach(m => { _pushReg('Medicamento', m.registered_by_ct_id, m.date, `${DB.getDog(m.dogId)?.name||'?'} — ${m.medName}`); });
+
+  const _totalReg = _allRegRecords.length;
+  html += `<p style="font-size:11px">Total registros con cuidadora asignada: <strong>${_totalReg}</strong></p>`;
+
+  // Group by caretaker
+  const _byCt = {};
+  _allRegRecords.forEach(r => {
+    if (!_byCt[r.ct_id]) _byCt[r.ct_id] = { total: 0, byType: {} };
+    _byCt[r.ct_id].total++;
+    _byCt[r.ct_id].byType[r.type] = (_byCt[r.ct_id].byType[r.type]||0) + 1;
+  });
+
+  const _ctEntries = Object.entries(_byCt).sort((a,b)=>b[1].total-a[1].total);
+  const _regTypes = ['Hospedaje ingreso','Recojo/salida','Daycare ingreso','Pago/cobro','Incidencia','Conflicto','Integración','Turno alimentación','Turno teléfono','Asignación cuidadora','Nuevo perro','Restaurante','Reserva','Medicamento'];
+
+  html += tbl(
+    ['Cuidadora', 'Total', '% del total', ..._regTypes],
+    _ctEntries.map(([ctId, data]) => {
+      const ct = cts.find(c => c.id == ctId);
+      const pct = _totalReg > 0 ? (data.total/_totalReg*100).toFixed(1)+'%' : '0%';
+      return [ct?.name||`ID ${ctId}`, data.total, pct, ..._regTypes.map(t => data.byType[t]||0)];
+    }),
+    _totalReg > 0 ? ['TOTAL', _totalReg, '100%', ..._regTypes.map(t => _allRegRecords.filter(r=>r.type===t).length)] : null
+  );
+
+  // Also show % by type globally
+  html += sub('Distribución global por tipo de registro:');
+  const _typeGroups = {};
+  _allRegRecords.forEach(r => { _typeGroups[r.type] = (_typeGroups[r.type]||0) + 1; });
+  html += tbl(
+    ['Tipo de registro', 'Cantidad', '% del total'],
+    Object.entries(_typeGroups).sort((a,b)=>b[1]-a[1]).map(([t,n]) => [t, n, _totalReg>0?(n/_totalReg*100).toFixed(1)+'%':'0%']),
+    ['TOTAL', _totalReg, '100%']
+  );
 
   html += `<hr style="margin-top:32px"><p style="font-size:10px;color:#888;text-align:center">FIN DEL DOCUMENTO — Aldea PDF para IA — Período ${from} → ${to} — ${new Date().toLocaleString('es')}</p>`;
   html += '</body></html>';
