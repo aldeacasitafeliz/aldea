@@ -11437,14 +11437,25 @@ function setReservaStatus(id, newStatus) {
   if (!r) return;
   const label = newStatus === 'pendiente' ? 'pendiente' : 'caída';
   const wasActive = r.status === 'activa';
-  const linkedStayId = r.activated_stay_id;
-  const linkedDcId = r.activated_dc_id;
+
+  // Resolve linked record — use stored ID or fall back to matching by dog+date
+  let linkedStayId = r.activated_stay_id;
+  let linkedDcId   = r.activated_dc_id;
+  if (wasActive && r.type === 'hospedaje' && !linkedStayId) {
+    const match = DB.stays.find(s => s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && s.status !== 'cancelado');
+    if (match) linkedStayId = match.id;
+  }
+  if (wasActive && r.type === 'daycare' && !linkedDcId) {
+    const match = DB.daycares.find(d => d.dog_id === r.dog_id && d.date === r.date);
+    if (match) linkedDcId = match.id;
+  }
+
   let confirmMsg = `¿Cambiar esta reserva a ${label}?`;
   if (wasActive && (linkedStayId || linkedDcId)) {
     confirmMsg += `\n\nEsto eliminará el ${r.type === 'hospedaje' ? 'hospedaje' : 'daycare'} creado al activarla (y sus pagos asociados).`;
   }
   if (!confirm(confirmMsg)) return;
-  // Remove linked stay/daycare and its payments
+
   if (wasActive && linkedStayId) {
     DB.saveStays(DB.stays.filter(s => s.id !== linkedStayId));
     DB.savePayments(DB.payments.filter(p => p.stay_id !== linkedStayId));
@@ -11459,7 +11470,7 @@ function setReservaStatus(id, newStatus) {
   if (newStatus === 'caida') r.fallen_at = new Date().toISOString();
   DB.saveReservas(arr);
   renderReservasPage();
-  if (wasActive && (linkedStayId || linkedDcId)) {
+  if (wasActive) {
     if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
   }
 }
