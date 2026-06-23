@@ -9305,11 +9305,11 @@ BLOQUE D — ANÁLISIS DEL PERÍODO
       const dog = DB.getDog(d.dog_id);
       list.push({ concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(d.advance_paid), nota: '' });
     });
-    // Adelantos de reservas (hospedaje y daycare)
-    (DB.reservas || []).filter(r => r.advance_payments?.length).forEach(r => {
+    // Adelantos de reservas solo pendientes (las activas ya tienen pago en DB.payments del stay)
+    (DB.reservas || []).filter(r => r.status === 'pendiente' && r.advance_payments?.length).forEach(r => {
       const dog = DB.getDog(r.dog_id);
       (r.advance_payments || []).filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
-        list.push({ concepto: r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare', fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: '' });
+        list.push({ concepto: r.type === 'hospedaje' ? 'Adelanto reserva hospedaje (pendiente)' : 'Adelanto reserva daycare (pendiente)', fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: 'reserva aún no activada' });
       });
     });
     return list.sort((a, b) => a.fecha.localeCompare(b.fecha));
@@ -9633,7 +9633,7 @@ function buildExportData(from, to) {
     .filter(d => (d.advance_paid || 0) > 0 && inRange(d.date))
     .map(d => { const dog = DB.getDog(d.dog_id); return { concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', amount: d.advance_paid }; });
   const advRes = (DB.reservas || [])
-    .filter(r => r.advance_payments?.length)
+    .filter(r => r.status === 'pendiente' && r.advance_payments?.length)
     .flatMap(r => (r.advance_payments || []).filter(p => inRange(p.date) && p.amount > 0).map(p => { const dog = DB.getDog(r.dog_id); return { concepto: r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare', fecha: p.date, perro: dog?.name || '?', amount: p.amount }; }));
   const advances = [...advStays, ...advDcs, ...advRes].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
