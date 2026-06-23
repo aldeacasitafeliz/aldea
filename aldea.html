@@ -1378,6 +1378,18 @@ tr:hover td { background: var(--gray-50); }
   </div>
 </div>
 
+<!-- Modal desglose deuda -->
+<div class="modal-overlay" id="modal-debt-breakdown">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-title" id="debt-modal-title">Desglose de deuda</div>
+    <div class="modal-body" id="debt-modal-body" style="padding:16px"></div>
+    <div class="modal-footer" style="display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--border)">
+      <button class="btn btn-primary btn-sm" id="debt-btn-edit" onclick="">✏️ Editar estadía completa</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-debt-breakdown')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal estadía -->
 <div class="modal-overlay" id="modal-stay">
   <div class="modal">
@@ -5958,6 +5970,167 @@ function setIncomePeriod(mode) {
   renderIncome();
 }
 
+let _debtBreakdownStayId = null;
+
+function openDebtBreakdown(stayId) {
+  _debtBreakdownStayId = stayId;
+  _renderDebtBreakdown();
+  document.getElementById('debt-btn-edit').onclick = () => { closeModal('modal-debt-breakdown'); openStayModal(stayId); };
+  openModal('modal-debt-breakdown');
+}
+
+function _renderDebtBreakdown() {
+  const stayId = _debtBreakdownStayId;
+  const stay = DB.stays.find(s => s.id === stayId);
+  if (!stay) return;
+  const dog   = DB.getDog(stay.dog_id);
+  const owner = getDogPrimaryOwner(dog);
+  const effectiveOut = stay.open_ended ? today() : stay.check_out_date;
+  const nights = dateDiff(stay.check_in_date, effectiveOut);
+  const rate   = parseFloat(stay.daily_rate) || 0;
+  const discPct = parseFloat(stay.discount_pct) || 0;
+  const isCustom = Array.isArray(stay.custom_holidays);
+  const hols   = _stayEffectiveHolidays(stay);
+  const holsInRange = hols.filter(h => h.date >= stay.check_in_date && h.date < effectiveOut);
+  const holTotal = holsInRange.length * HOLIDAY_SURCHARGE;
+  const byNight  = stay.rate_type === 'nightly';
+  let baseNights = nights;
+  if (!stay.open_ended) {
+    if (byNight) baseNights = stay.late_pickup ? nights + 1 : nights;
+    else baseNights = stay.late_pickup ? nights + 1 : nights;
+  }
+  const baseAmt  = stay.manual_total != null ? parseFloat(stay.manual_total) : baseNights * rate + holTotal + (!stay.open_ended && !byNight ? rate * 0.5 : 0);
+  const totalAmt = calcStayTotal(stay);
+  const paid     = getPaidAmount(stayId);
+  const pend     = getPendingAmount(stay);
+  const pays     = DB.payments.filter(p => p.stay_id === stayId).sort((a,b) => a.date.localeCompare(b.date));
+
+  document.getElementById('debt-modal-title').textContent = `Desglose — ${dog?.name||'?'} ${dog?.owner_last_name||''}`;
+
+  let html = `<div style="font-size:12px">`;
+
+  // ── Datos básicos ──
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-bottom:14px;padding:10px 12px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)">
+    <div><span class="text-muted">Ingreso:</span> <strong>${fmtDate(stay.check_in_date)}</strong></div>
+    <div><span class="text-muted">Salida:</span> <strong>${stay.open_ended ? `Sin fecha (calculado hasta ${fmtDate(today())})` : fmtDate(stay.check_out_date)}</strong></div>
+    <div><span class="text-muted">Tarifa:</span> <strong>${fmtMoney(rate)}/${byNight ? 'noche' : 'día'}</strong></div>
+    <div><span class="text-muted">Recojo tarde:</span> <strong>${stay.late_pickup ? 'Sí (+1 día)' : 'No'}</strong></div>
+    ${owner?.phone ? `<div><span class="text-muted">Teléfono:</span> <strong>${owner.phone}</strong></div>` : ''}
+    ${stay.is_exchange ? `<div><span class="text-muted">Tipo:</span> <strong>Canje (S/ 0)</strong></div>` : ''}
+  </div>`;
+
+  // ── Desglose de costo ──
+  html += `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">
+    <tbody>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--text-muted)">Días/noches hospedado</td>
+        <td style="padding:5px 8px;text-align:right">${nights} ${byNight?'noches':'días'}${stay.late_pickup?' + 1 extra':''}${stay.open_ended?' (hasta hoy)':''}</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--text-muted)">${baseNights} × ${fmtMoney(rate)}</td>
+        <td style="padding:5px 8px;text-align:right">${fmtMoney(baseNights * rate)}</td>
+      </tr>
+      ${!stay.open_ended && !byNight ? `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--text-muted)">½ día salida</td>
+        <td style="padding:5px 8px;text-align:right">${fmtMoney(rate * 0.5)}</td>
+      </tr>` : ''}
+      ${holsInRange.length ? holsInRange.map(h => `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--amber-800)">🎉 Feriado: ${fmtDate(h.date)} — ${h.name||'sin nombre'}</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--amber-800)">+${fmtMoney(HOLIDAY_SURCHARGE)}</td>
+      </tr>`).join('') : ''}
+      ${discPct > 0 && stay.manual_total == null ? `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--blue-800)">Descuento ${discPct}%</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--blue-800)">−${fmtMoney((baseNights*rate + holTotal + (!stay.open_ended&&!byNight?rate*0.5:0)) * discPct/100)}</td>
+      </tr>` : ''}
+      ${stay.manual_total != null ? `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--purple-700)">Total manual fijado</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--purple-700)">${fmtMoney(parseFloat(stay.manual_total))}</td>
+      </tr>` : ''}
+      <tr style="background:var(--surface);font-weight:700;border-top:2px solid var(--border)">
+        <td style="padding:7px 8px">TOTAL ESTADÍA</td>
+        <td style="padding:7px 8px;text-align:right;font-size:14px">${fmtMoney(totalAmt)}</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:5px 8px;color:var(--green-800)">Ya pagado</td>
+        <td style="padding:5px 8px;text-align:right;color:var(--green-800);font-weight:600">${fmtMoney(paid)}</td>
+      </tr>
+      ${pays.length ? pays.map(p=>`<tr><td style="padding:2px 8px 2px 20px;color:var(--text-muted);font-size:11px">↳ ${fmtDate(p.date)}${p.note?' — '+p.note:''}</td><td style="padding:2px 8px;text-align:right;font-size:11px;color:var(--green-800)">${fmtMoney(p.amount)}</td></tr>`).join('') : ''}
+      <tr style="background:var(--red-50);font-weight:700;border-top:2px solid var(--red-200)">
+        <td style="padding:7px 8px;color:var(--red-800)">DEBE</td>
+        <td style="padding:7px 8px;text-align:right;font-size:15px;color:var(--red-800)">${fmtMoney(pend)}</td>
+      </tr>
+    </tbody>
+  </table>`;
+
+  // ── Gestión de feriados ──
+  html += `<div style="border:1px solid var(--amber-300);border-radius:var(--radius);padding:12px;background:var(--amber-50)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+      <strong style="font-size:12px">🎉 Feriados aplicados</strong>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${isCustom
+          ? `<button class="btn btn-secondary btn-sm" onclick="_debtResetHolidays()">↺ Restaurar globales</button>`
+          : `<button class="btn btn-secondary btn-sm" onclick="_debtCustomizeHolidays()">✏️ Personalizar</button>`}
+      </div>
+    </div>`;
+
+  if (holsInRange.length === 0) {
+    html += `<div class="text-muted" style="font-size:12px">Sin feriados en el período de la estadía.</div>`;
+  } else {
+    html += holsInRange.map(h => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 6px;background:#fff;border-radius:4px;margin-bottom:4px;border:1px solid var(--amber-200)">
+        <span style="font-size:12px"><strong>${fmtDate(h.date)}</strong> — ${h.name||'sin nombre'} <span style="color:var(--amber-800)">+S/ ${HOLIDAY_SURCHARGE}</span></span>
+        ${isCustom ? `<button class="btn btn-danger btn-sm" style="padding:2px 8px" onclick="_debtRemoveHoliday('${h.date}')">✕</button>` : ''}
+      </div>`).join('');
+  }
+
+  if (isCustom) {
+    html += `<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <input type="date" id="debt-hol-date" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px">
+      <input type="text" id="debt-hol-name" placeholder="Nombre feriado" style="font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;flex:1;min-width:120px">
+      <button class="btn btn-primary btn-sm" onclick="_debtAddHoliday()">+ Agregar</button>
+    </div>`;
+  }
+
+  html += `</div></div>`;
+  document.getElementById('debt-modal-body').innerHTML = html;
+}
+
+function _debtCustomizeHolidays() {
+  const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
+  if (!stay) return;
+  const effectiveOut = stay.open_ended ? today() : stay.check_out_date;
+  const autoHols = getHolidaysInRange(stay.check_in_date, effectiveOut)
+    .filter(h => h.date >= stay.check_in_date && h.date < effectiveOut);
+  stay.custom_holidays = autoHols.map(h => ({ date: h.date, name: h.name }));
+  DB.saveStays(); _renderDebtBreakdown();
+}
+
+function _debtResetHolidays() {
+  const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
+  if (!stay) return;
+  delete stay.custom_holidays;
+  DB.saveStays(); _renderDebtBreakdown();
+}
+
+function _debtAddHoliday() {
+  const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
+  if (!stay || !Array.isArray(stay.custom_holidays)) return;
+  const dateVal = document.getElementById('debt-hol-date').value;
+  const nameVal = document.getElementById('debt-hol-name').value.trim() || 'Feriado manual';
+  if (!dateVal) { alert('Seleccioná una fecha.'); return; }
+  if (stay.custom_holidays.some(h => h.date === dateVal)) { alert('Ese feriado ya existe.'); return; }
+  stay.custom_holidays.push({ date: dateVal, name: nameVal });
+  stay.custom_holidays.sort((a,b) => a.date.localeCompare(b.date));
+  DB.saveStays(); _renderDebtBreakdown();
+}
+
+function _debtRemoveHoliday(date) {
+  const stay = DB.stays.find(s => s.id === _debtBreakdownStayId);
+  if (!stay || !Array.isArray(stay.custom_holidays)) return;
+  stay.custom_holidays = stay.custom_holidays.filter(h => h.date !== date);
+  DB.saveStays(); _renderDebtBreakdown();
+}
+
 function renderIncome() {
   const { from, to } = _incomeFilter;
   const inRange = date => (!from || date >= from) && (!to || date <= to);
@@ -6065,7 +6238,7 @@ function renderIncome() {
       <div style="border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;overflow:hidden">
         <div style="background:var(--red-50);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div>
-            <strong style="font-size:14px">${dog?.name||'?'}</strong>
+            <strong style="font-size:14px;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;color:var(--text)" onclick="openDebtBreakdown(${s.id})">${dog?.name||'?'}</strong>
             <span class="text-muted text-sm"> ${dog?.owner_last_name||''}</span>
             ${mora > 0 ? `<span class="badge badge-red" style="margin-left:6px">${mora}d mora</span>` : s.open_ended ? '<span class="badge badge-amber" style="margin-left:6px">abierta</span>' : ''}
           </div>
@@ -6265,7 +6438,7 @@ function renderIncome() {
       const pending = getPendingAmount(s);
       const debtDays = getDaysDebt(s);
       return `<tr>
-        <td><strong>${dog?.name||'?'}</strong></td>
+        <td><strong style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted" onclick="openDebtBreakdown(${s.id})">${dog?.name||'?'}</strong></td>
         <td>${dog?.owner_last_name||'—'}</td>
         <td>${fmtMoney(total)}</td>
         <td style="color:var(--green-800)">${fmtMoney(paid)}</td>
