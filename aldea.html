@@ -1238,6 +1238,18 @@ tr:hover td { background: var(--gray-50); }
           </div>
         </div>
 
+        <!-- Backup Supabase -->
+        <div class="card" style="margin-bottom:16px;padding:18px">
+          <div style="font-weight:600;font-size:14px;margin-bottom:6px">Respaldo completo</div>
+          <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Descarga todos tus datos de Supabase como un archivo JSON. Guardalo en tu computadora como respaldo por si algo sale mal.</div>
+          <button class="btn btn-secondary" style="gap:8px;font-size:14px;border-color:var(--green-600);color:var(--green-600)" onclick="exportSupabaseBackup(this)">
+            ☁️ Exportar Supabase
+          </button>
+        </div>
+
+        <div style="display:none">
+        </div>
+
         <!-- Hidden elements kept for JS compatibility -->
         <div style="display:none">
           <input type="date" id="prev-from"><input type="date" id="prev-to">
@@ -11013,6 +11025,39 @@ function xlSheet(name, rows) {
 }
 function xlHeader(...labels) {
   return `<Row>${labels.map(l => `<Cell ss:StyleID="header"><Data ss:Type="String">${String(l).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</Data></Cell>`).join('')}</Row>`;
+}
+
+async function exportSupabaseBackup(btn) {
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Descargando...';
+  try {
+    let backup = {};
+    if (_sb) {
+      const { data } = await _sb.from('aldea_store').select('key, value, updated_at');
+      if (data && data.length) {
+        data.forEach(row => { backup[row.key] = row.value; });
+      }
+    }
+    if (!Object.keys(backup).length) {
+      SYNC_KEYS.forEach(k => {
+        try { backup[k] = JSON.parse(localStorage.getItem(k) || 'null'); } catch(e) {}
+      });
+    }
+    const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), data: backup }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `aldea_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    btn.innerHTML = '✓ Descargado';
+    setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 3000);
+  } catch(e) {
+    alert('Error al exportar: ' + e.message);
+    btn.innerHTML = orig;
+    btn.disabled = false;
+  }
 }
 
 function exportData(format) {
