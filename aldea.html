@@ -4314,10 +4314,40 @@ function populateRegCtSelect(elId) {
   const sel = document.getElementById(elId);
   if (!sel) return;
   let all = DB.caretakers.filter(c => c.status === 'activa');
-  // Fallback: if no 'activa' found but there are caretakers, show all (data may be stale)
   if (!all.length) all = DB.caretakers;
   sel.innerHTML = '<option value="">— Seleccionar —</option>' +
     all.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  // If still empty, show reload button next to the select
+  const existingBtn = sel.parentElement.querySelector('.ct-reload-btn');
+  if (existingBtn) existingBtn.remove();
+  if (!all.length) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-secondary btn-sm ct-reload-btn';
+    btn.style.cssText = 'margin-top:6px;width:100%';
+    btn.textContent = '🔄 No se cargaron las cuidadoras — tocar para reintentar';
+    btn.onclick = () => _reloadCaretakersAndRepopulate(elId);
+    sel.parentElement.appendChild(btn);
+  }
+}
+
+async function _reloadCaretakersAndRepopulate(elId) {
+  const btn = document.querySelector('.ct-reload-btn');
+  if (btn) { btn.textContent = 'Cargando...'; btn.disabled = true; }
+  if (_sb) {
+    try {
+      const { data } = await _sb.from('aldea_store').select('key, value').eq('key', 'aldea_caretakers');
+      if (data && data[0]) {
+        const val = data[0].value;
+        localStorage.setItem('aldea_caretakers', Array.isArray(val) ? JSON.stringify(val) : typeof val === 'string' ? val : JSON.stringify(val));
+      }
+    } catch(e) { console.warn('reload caretakers error', e); }
+  }
+  populateRegCtSelect(elId);
+  if (DB.caretakers.length === 0) {
+    const b = document.querySelector('.ct-reload-btn');
+    if (b) { b.textContent = '⚠️ Sin conexión — recargá la página (F5)'; b.disabled = false; }
+  }
 }
 
 async function _ensureCaretakersLoaded(callback) {
