@@ -1702,7 +1702,7 @@ tr:hover td { background: var(--gray-50); }
           <label>Tipo de cobro</label>
           <select id="dc-billing-type" onchange="toggleDcBillingType()">
             <option value="daily">Por día</option>
-            <option value="hourly">Por horas</option>
+            <option value="block">Por unidad de tiempo</option>
           </select>
         </div>
         <!-- Daily rate (default) -->
@@ -1710,23 +1710,39 @@ tr:hover td { background: var(--gray-50); }
           <label>Tarifa (S/) *</label>
           <input type="number" id="dc-rate" placeholder="0" min="0" step="1">
         </div>
-        <!-- Hourly fields -->
-        <div id="dc-hourly-group" style="display:none;grid-column:span 2">
+        <!-- Block / unit-of-time fields -->
+        <div id="dc-block-group" style="display:none;grid-column:span 2">
           <div class="form-grid" style="margin:0">
             <div class="form-group">
-              <label>Tarifa por hora (S/) *</label>
-              <input type="number" id="dc-hourly-rate" placeholder="0" min="0" step="0.5" oninput="updateDcHourlyPreview()">
+              <label>Tarifa base (S/) *</label>
+              <input type="number" id="dc-block-rate" placeholder="0" min="0" step="0.5" oninput="updateDcBlockPreview()">
             </div>
             <div class="form-group">
-              <label>Hora de ingreso</label>
-              <input type="time" id="dc-hora-ingreso" onchange="updateDcHourlyPreview()">
+              <label>Unidad de cobro *</label>
+              <select id="dc-block-unit" onchange="toggleDcBlockUnit();updateDcBlockPreview()">
+                <option value="12">12 horas</option>
+                <option value="24">24 horas</option>
+                <option value="libre">Horas libres</option>
+              </select>
+            </div>
+            <div class="form-group" id="dc-block-custom-group" style="display:none">
+              <label>Horas de la unidad *</label>
+              <input type="number" id="dc-block-hours" placeholder="ej. 10" min="1" step="0.5" oninput="updateDcBlockPreview()">
             </div>
             <div class="form-group">
-              <label>Hora de salida (estimada)</label>
-              <input type="time" id="dc-hora-salida" onchange="updateDcHourlyPreview()">
+              <label>Hora de ingreso *</label>
+              <div style="display:flex;gap:6px;align-items:center">
+                <input type="number" id="dc-ingreso-h" class="form-control" min="1" max="12" placeholder="HH" style="width:64px" oninput="updateDcBlockPreview()">
+                <span style="font-weight:700">:</span>
+                <input type="number" id="dc-ingreso-m" class="form-control" min="0" max="59" placeholder="MM" style="width:64px" oninput="updateDcBlockPreview()">
+                <select id="dc-ingreso-ampm" class="form-control" style="width:82px" onchange="updateDcBlockPreview()">
+                  <option value="am">a.m.</option>
+                  <option value="pm">p.m.</option>
+                </select>
+              </div>
             </div>
-            <div class="form-group">
-              <div id="dc-hourly-preview" style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:8px 12px;font-size:13px;color:var(--green-800);display:none"></div>
+            <div class="form-group span2">
+              <div id="dc-block-preview" style="background:var(--blue-50);border:1px solid var(--blue-200);border-radius:8px;padding:10px 14px;font-size:12px;display:none"></div>
             </div>
           </div>
         </div>
@@ -2649,15 +2665,16 @@ function calcStayTotal(stay) {
 
 function calcDaycareBaseTotal(dc) {
   if (dc.manual_total != null && dc.manual_total !== '') return parseFloat(dc.manual_total) || 0;
-  if (dc.billing_type === 'hourly') {
-    const hourlyRate = parseFloat(dc.hourly_rate) || 0;
-    let hours = parseFloat(dc.num_hours) || 0;
-    if (!hours && dc.hora_ingreso && dc.hora_salida) {
-      const [ih, im] = dc.hora_ingreso.split(':').map(Number);
-      const [oh, om] = dc.hora_salida.split(':').map(Number);
-      hours = Math.max(0, (oh * 60 + om - ih * 60 - im) / 60);
-    }
-    const base = hourlyRate * hours;
+  if (dc.billing_type === 'block' || dc.billing_type === 'hourly') {
+    // block: rate per block-unit, prorated by real hours
+    const blockRate = parseFloat(dc.block_rate ?? dc.hourly_rate) || 0;
+    const blockUnit = dc.block_unit ?? '12';
+    const effHours = blockUnit === 'libre' ? (parseFloat(dc.block_hours) || 1)
+                   : blockUnit === '24' ? 24 : 12;
+    const hourlyRate = dc.billing_type === 'hourly' ? blockRate : blockRate / effHours;
+    if (!dc.hora_salida) return 0; // pending — salida not yet registered
+    const realHours = Math.max(0, _hoursFromTimes(dc.hora_ingreso, dc.hora_salida));
+    const base = hourlyRate * realHours;
     const useHoliday = Array.isArray(dc.custom_holidays)
       ? dc.custom_holidays.some(h => h.date === dc.date)
       : !!isHoliday(dc.date);
@@ -5347,26 +5364,84 @@ function _resetDaycareDiscountUI() {
   if (dcManAmt) dcManAmt.value = '';
 }
 
-function toggleDcBillingType() {
-  const isHourly = document.getElementById('dc-billing-type').value === 'hourly';
-  document.getElementById('dc-rate-group').style.display = isHourly ? 'none' : '';
-  document.getElementById('dc-hourly-group').style.display = isHourly ? '' : 'none';
-  if (isHourly) updateDcHourlyPreview();
+// ── Time input helpers (H/M/am-pm) ──
+function _getTimeInput(prefix) {
+  const h = parseInt(document.getElementById(`${prefix}-h`)?.value);
+  const m = parseInt(document.getElementById(`${prefix}-m`)?.value) || 0;
+  const ampm = document.getElementById(`${prefix}-ampm`)?.value || 'am';
+  if (!h || h < 1 || h > 12) return '';
+  let h24 = h;
+  if (ampm === 'am' && h === 12) h24 = 0;
+  else if (ampm === 'pm' && h !== 12) h24 = h + 12;
+  return String(h24).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+function _setTimeInput(prefix, hhmm) {
+  if (!hhmm) return;
+  const [hStr, mStr] = hhmm.split(':');
+  let h24 = parseInt(hStr), m = parseInt(mStr) || 0;
+  let ampm = 'am', h12 = h24;
+  if (h24 === 0) { h12 = 12; ampm = 'am'; }
+  else if (h24 === 12) { h12 = 12; ampm = 'pm'; }
+  else if (h24 > 12) { h12 = h24 - 12; ampm = 'pm'; }
+  const hEl = document.getElementById(`${prefix}-h`);
+  const mEl = document.getElementById(`${prefix}-m`);
+  const amEl = document.getElementById(`${prefix}-ampm`);
+  if (hEl) hEl.value = h12;
+  if (mEl) mEl.value = String(m).padStart(2,'0');
+  if (amEl) amEl.value = ampm;
+}
+function _hoursFromTimes(t1, t2) {
+  // t1, t2 = 'HH:MM' 24h; returns decimal hours (can be negative)
+  if (!t1 || !t2) return 0;
+  const [h1,m1] = t1.split(':').map(Number);
+  const [h2,m2] = t2.split(':').map(Number);
+  return (h2 * 60 + m2 - h1 * 60 - m1) / 60;
+}
+function _blockDesgloseHtml(blockRate, blockUnit, blockHoursCustom, realHours, discPct, isHoliday) {
+  const effHours = blockUnit === 'libre' ? (parseFloat(blockHoursCustom) || 1)
+                 : blockUnit === '24' ? 24 : 12;
+  const hourlyRate = blockRate / effHours;
+  const subtotal = hourlyRate * realHours;
+  const discount = discPct > 0 ? subtotal * discPct / 100 : 0;
+  const holidayAdd = isHoliday ? HOLIDAY_SURCHARGE : 0;
+  const total = Math.max(0, subtotal - discount + holidayAdd);
+  const unitLabel = blockUnit === 'libre' ? `${effHours} horas (libre)` : `${blockUnit} horas`;
+  return { subtotal, discount, holidayAdd, total, hourlyRate, effHours, unitLabel };
 }
 
-function updateDcHourlyPreview() {
-  const rate = parseFloat(document.getElementById('dc-hourly-rate').value) || 0;
-  const ingreso = document.getElementById('dc-hora-ingreso').value;
-  const salida = document.getElementById('dc-hora-salida').value;
-  const prev = document.getElementById('dc-hourly-preview');
-  if (!rate || !ingreso || !salida) { prev.style.display = 'none'; return; }
-  const [ih, im] = ingreso.split(':').map(Number);
-  const [oh, om] = salida.split(':').map(Number);
-  const hours = Math.max(0, (oh * 60 + om - ih * 60 - im) / 60);
-  if (hours <= 0) { prev.style.display = 'none'; return; }
-  const total = rate * hours;
+function toggleDcBillingType() {
+  const bt = document.getElementById('dc-billing-type').value;
+  const isBlock = bt === 'block';
+  document.getElementById('dc-rate-group').style.display = isBlock ? 'none' : '';
+  document.getElementById('dc-block-group').style.display = isBlock ? '' : 'none';
+  if (isBlock) { toggleDcBlockUnit(); updateDcBlockPreview(); }
+}
+function toggleDcBlockUnit() {
+  const isLibre = document.getElementById('dc-block-unit')?.value === 'libre';
+  const cg = document.getElementById('dc-block-custom-group');
+  if (cg) cg.style.display = isLibre ? '' : 'none';
+}
+function updateDcBlockPreview() {
+  const rate = parseFloat(document.getElementById('dc-block-rate')?.value) || 0;
+  const unit = document.getElementById('dc-block-unit')?.value || '12';
+  const customHours = document.getElementById('dc-block-hours')?.value;
+  const ingreso = _getTimeInput('dc-ingreso');
+  const prev = document.getElementById('dc-block-preview');
+  if (!prev) return;
+  if (!rate || !ingreso) { prev.style.display = 'none'; return; }
+  const effHours = unit === 'libre' ? (parseFloat(customHours) || 0) : parseInt(unit);
+  if (unit === 'libre' && !effHours) { prev.style.display = 'none'; return; }
+  const unitLabel = unit === 'libre' ? `${effHours}h (libre)` : `${unit} horas`;
+  const hourlyRate = rate / effHours;
   prev.style.display = 'block';
-  prev.innerHTML = `${hours.toFixed(1)} h × ${fmtMoney(rate)}/h = <strong>${fmtMoney(total)}</strong>`;
+  prev.innerHTML = `<strong>${fmtMoney(rate)}</strong> cada ${unitLabel} → <strong>${fmtMoney(hourlyRate)}/h</strong> &nbsp;·&nbsp; Ingreso: <strong>${_fmt12h(ingreso)}</strong> &nbsp;·&nbsp; <em style="color:var(--text-muted)">Salida y cobro final se registran en Salidas</em>`;
+}
+function _fmt12h(hhmm) {
+  if (!hhmm) return '—';
+  const [h,m] = hhmm.split(':').map(Number);
+  const ampm = h < 12 ? 'a.m.' : 'p.m.';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
 
 function openDaycareModal() {
@@ -5378,10 +5453,13 @@ function openDaycareModal() {
   document.getElementById('daycare-alerts').innerHTML = '';
   // Reset billing type
   document.getElementById('dc-billing-type').value = 'daily';
-  document.getElementById('dc-hourly-rate').value = '';
-  document.getElementById('dc-hora-ingreso').value = '';
-  document.getElementById('dc-hora-salida').value = '';
-  document.getElementById('dc-hourly-preview').style.display = 'none';
+  document.getElementById('dc-block-rate').value = '';
+  document.getElementById('dc-block-unit').value = '12';
+  if (document.getElementById('dc-block-hours')) document.getElementById('dc-block-hours').value = '';
+  document.getElementById('dc-ingreso-h').value = '';
+  document.getElementById('dc-ingreso-m').value = '';
+  document.getElementById('dc-ingreso-ampm').value = 'am';
+  if (document.getElementById('dc-block-preview')) document.getElementById('dc-block-preview').style.display = 'none';
   toggleDcBillingType();
   // reg-ct (new only)
   document.getElementById('dc-reg-ct-group').style.display = '';
@@ -5467,13 +5545,13 @@ function openEditDaycare(id) {
   // Hide reg-ct on edit
   document.getElementById('dc-reg-ct-group').style.display = 'none';
   // Load billing type
-  const isHourly = dc.billing_type === 'hourly';
-  document.getElementById('dc-billing-type').value = isHourly ? 'hourly' : 'daily';
-  if (isHourly) {
-    document.getElementById('dc-hourly-rate').value = dc.hourly_rate || '';
-    document.getElementById('dc-hora-ingreso').value = dc.hora_ingreso || '';
-    document.getElementById('dc-hora-salida').value = dc.hora_salida || '';
-    updateDcHourlyPreview();
+  const isBlock = dc.billing_type === 'block' || dc.billing_type === 'hourly';
+  document.getElementById('dc-billing-type').value = isBlock ? 'block' : 'daily';
+  if (isBlock) {
+    document.getElementById('dc-block-rate').value = dc.block_rate ?? dc.hourly_rate ?? '';
+    document.getElementById('dc-block-unit').value = dc.block_unit ?? '12';
+    if (dc.block_hours) document.getElementById('dc-block-hours').value = dc.block_hours;
+    _setTimeInput('dc-ingreso', dc.hora_ingreso || '');
   } else {
     document.getElementById('dc-rate').value = dc.rate;
   }
@@ -5517,16 +5595,23 @@ function saveDaycare() {
   const dogId = parseInt(document.getElementById('dc-dog').value);
   const date = document.getElementById('dc-date').value;
   const billingType = document.getElementById('dc-billing-type').value;
-  const isHourly = billingType === 'hourly';
-  const rate = isHourly ? null : parseFloat(document.getElementById('dc-rate').value);
-  const hourlyRate = isHourly ? parseFloat(document.getElementById('dc-hourly-rate').value) : null;
-  const horaIngreso = isHourly ? document.getElementById('dc-hora-ingreso').value : null;
-  const horaSalida = isHourly ? document.getElementById('dc-hora-salida').value : null;
+  const isBlock = billingType === 'block';
+  const rate = isBlock ? null : parseFloat(document.getElementById('dc-rate').value);
+  const blockRate = isBlock ? parseFloat(document.getElementById('dc-block-rate').value) : null;
+  const blockUnit = isBlock ? document.getElementById('dc-block-unit').value : null;
+  const blockHours = isBlock && blockUnit === 'libre' ? parseFloat(document.getElementById('dc-block-hours').value) : null;
+  const horaIngreso = isBlock ? _getTimeInput('dc-ingreso') : null;
   const notes = document.getElementById('dc-notes').value.trim();
   const alertEl = document.getElementById('daycare-alerts');
   alertEl.innerHTML = '';
 
-  const rateValid = isHourly ? !!hourlyRate : !!rate;
+  const rateValid = isBlock ? !!blockRate : !!rate;
+  if (isBlock && blockUnit === 'libre' && !blockHours) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Ingresá las horas de la unidad libre.</div>'; return;
+  }
+  if (isBlock && !horaIngreso) {
+    alertEl.innerHTML = '<div class="alert alert-danger">Ingresá la hora de ingreso.</div>'; return;
+  }
   if (!dogId || !date || !rateValid) {
     alertEl.innerHTML = '<div class="alert alert-danger">Completa todos los campos obligatorios.</div>';
     return;
@@ -5552,8 +5637,8 @@ function saveDaycare() {
     return;
   }
 
-  const billingFields = isHourly
-    ? { billing_type: 'hourly', hourly_rate: hourlyRate, hora_ingreso: horaIngreso, hora_salida: horaSalida, rate: null }
+  const billingFields = isBlock
+    ? { billing_type: 'block', block_rate: blockRate, block_unit: blockUnit, block_hours: blockHours || undefined, hora_ingreso: horaIngreso, rate: null }
     : { billing_type: 'daily', rate };
 
   if (_editDaycareId) {
@@ -6907,22 +6992,33 @@ function openDaycarePickupModal(dcId) {
   if (!dc) return;
   const dog = DB.getDog(dc.dog_id);
   const now = new Date();
-  const timeStr = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const nowH = now.getHours(), nowM = now.getMinutes();
+  const nowAmpm = nowH < 12 ? 'am' : 'pm';
+  const nowH12 = nowH === 0 ? 12 : nowH > 12 ? nowH - 12 : nowH;
   const ctList = DB.caretakers.filter(c => c.status === 'activa')
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  // Update hora_salida in daycare record
-  const hourlyNote = dc.billing_type === 'hourly'
-    ? `<div style="background:var(--blue-50);border:1px solid var(--blue-200);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--text-muted);margin-bottom:12px">Daycare por horas — se actualizará la hora de salida y se recalculará el total.</div>` : '';
+  const isBlock = dc.billing_type === 'block' || dc.billing_type === 'hourly';
+  const salidaInputHtml = isBlock
+    ? `<div style="display:flex;gap:6px;align-items:center">
+        <input type="number" id="dcp-salida-h" class="form-control" min="1" max="12" style="width:64px" value="${nowH12}" oninput="updateDcPickupPreview(${dcId})">
+        <span style="font-weight:700">:</span>
+        <input type="number" id="dcp-salida-m" class="form-control" min="0" max="59" style="width:64px" value="${String(nowM).padStart(2,'0')}" oninput="updateDcPickupPreview(${dcId})">
+        <select id="dcp-salida-ampm" class="form-control" style="width:82px" onchange="updateDcPickupPreview(${dcId})">
+          <option value="am"${nowAmpm==='am'?' selected':''}>a.m.</option>
+          <option value="pm"${nowAmpm==='pm'?' selected':''}>p.m.</option>
+        </select>
+      </div>`
+    : `<input type="time" id="dc-pickup-time" class="form-control" value="${String(nowH).padStart(2,'0')}:${String(nowM).padStart(2,'0')}">`;
   const html = `<div style="padding:16px">
     <div style="font-weight:600;margin-bottom:10px">Registrar salida daycare</div>
     <div style="background:var(--gray-50);border:1px solid var(--border-md);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px">
       <strong>${dog?.name || '?'} ${dog?.owner_last_name || ''}</strong> &nbsp;·&nbsp; ${fmtDate(dc.date)}
+      ${isBlock && dc.hora_ingreso ? `&nbsp;·&nbsp; Ingreso: <strong>${_fmt12h(dc.hora_ingreso)}</strong>` : ''}
     </div>
-    ${hourlyNote}
     <div class="form-grid">
-      <div class="form-group"><label>Hora de salida *</label><input type="time" id="dc-pickup-time" class="form-control" value="${timeStr}" oninput="updateDcPickupPreview(${dcId})"></div>
+      <div class="form-group"><label>Hora de salida real *</label>${salidaInputHtml}</div>
       <div class="form-group"><label>Cuidadora que registra *</label><select id="dc-pickup-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
-      <div class="form-group span2"><div id="dc-pickup-preview" style="background:var(--green-50);border:1px solid var(--green-200);border-radius:8px;padding:8px 12px;font-size:13px;display:none"></div></div>
+      <div class="form-group span2"><div id="dc-pickup-preview" style="border-radius:8px;padding:10px 14px;font-size:12px;display:none"></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn btn-secondary" style="flex:1" onclick="closeModal('modal-dc-pickup')">Cancelar</button>
@@ -6934,7 +7030,7 @@ function openDaycarePickupModal(dcId) {
     overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.id = 'modal-dc-pickup';
-    overlay.innerHTML = `<div class="modal" style="max-width:480px" id="modal-dc-pickup-inner"></div>`;
+    overlay.innerHTML = `<div class="modal" style="max-width:520px" id="modal-dc-pickup-inner"></div>`;
     document.body.appendChild(overlay);
   }
   document.getElementById('modal-dc-pickup-inner').innerHTML = html;
@@ -6944,38 +7040,62 @@ function openDaycarePickupModal(dcId) {
 
 function updateDcPickupPreview(dcId) {
   const dc = DB.daycares.find(d => d.id === dcId);
-  if (!dc || dc.billing_type !== 'hourly') return;
-  const salida = document.getElementById('dc-pickup-time')?.value;
   const prev = document.getElementById('dc-pickup-preview');
   if (!prev) return;
-  if (!salida || !dc.hora_ingreso) { prev.style.display = 'none'; return; }
-  const [ih, im] = dc.hora_ingreso.split(':').map(Number);
-  const [oh, om] = salida.split(':').map(Number);
-  const hours = Math.max(0, (oh * 60 + om - ih * 60 - im) / 60);
-  const rate = parseFloat(dc.hourly_rate) || 0;
-  const total = rate * hours;
+  const isBlock = dc && (dc.billing_type === 'block' || dc.billing_type === 'hourly');
+  if (!isBlock || !dc.hora_ingreso) { prev.style.display = 'none'; return; }
+  const salida = _getTimeInput('dcp-salida');
+  if (!salida) { prev.style.display = 'none'; return; }
+  const realHours = _hoursFromTimes(dc.hora_ingreso, salida);
+  if (realHours <= 0) { prev.style.display = 'none'; return; }
+  const blockRate = parseFloat(dc.block_rate ?? dc.hourly_rate) || 0;
+  const blockUnit = dc.block_unit ?? '12';
+  const useHoliday = Array.isArray(dc.custom_holidays)
+    ? dc.custom_holidays.some(h => h.date === dc.date) : !!isHoliday(dc.date);
+  const { subtotal, discount, holidayAdd, total, hourlyRate, effHours, unitLabel } =
+    _blockDesgloseHtml(blockRate, blockUnit, dc.block_hours, realHours, dc.discount_pct || 0, useHoliday);
   prev.style.display = 'block';
-  prev.innerHTML = `${hours.toFixed(1)} h × ${fmtMoney(rate)}/h = <strong>${fmtMoney(total)}</strong>`;
+  prev.style.background = 'var(--green-50)';
+  prev.style.border = '1px solid var(--green-200)';
+  prev.innerHTML = `
+    <div style="font-weight:700;margin-bottom:8px;color:var(--green-900)">Desglose del cobro</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 16px;font-size:12px">
+      <div><span style="color:var(--text-muted)">Ingreso:</span> <strong>${_fmt12h(dc.hora_ingreso)}</strong></div>
+      <div><span style="color:var(--text-muted)">Salida real:</span> <strong>${_fmt12h(salida)}</strong></div>
+      <div><span style="color:var(--text-muted)">Horas reales:</span> <strong>${realHours.toFixed(2)} h</strong></div>
+      <div><span style="color:var(--text-muted)">Unidad:</span> <strong>${unitLabel}</strong></div>
+      <div><span style="color:var(--text-muted)">Tarifa base:</span> <strong>${fmtMoney(blockRate)}</strong></div>
+      <div><span style="color:var(--text-muted)">Valor/hora:</span> <strong>${fmtMoney(hourlyRate)}/h</strong></div>
+      <div><span style="color:var(--text-muted)">Subtotal:</span> <strong>${fmtMoney(subtotal)}</strong></div>
+      ${discount > 0 ? `<div><span style="color:var(--text-muted)">Descuento ${dc.discount_pct}%:</span> <strong style="color:var(--amber-800)">-${fmtMoney(discount)}</strong></div>` : '<div></div>'}
+      ${holidayAdd > 0 ? `<div style="grid-column:1/-1"><span style="color:var(--text-muted)">Adicional feriado:</span> <strong style="color:var(--amber-800)">+${fmtMoney(holidayAdd)}</strong></div>` : ''}
+    </div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--green-200);font-size:14px;font-weight:700;color:var(--green-900)">Total final: ${fmtMoney(total)}</div>`;
 }
 
 function saveDaycarePickup(dcId) {
-  const time = document.getElementById('dc-pickup-time')?.value;
+  const dc = DB.daycares.find(d => d.id === dcId);
+  if (!dc) return;
+  const isBlock = dc.billing_type === 'block' || dc.billing_type === 'hourly';
+  const time = isBlock ? _getTimeInput('dcp-salida') : document.getElementById('dc-pickup-time')?.value;
   const regCtId = parseInt(document.getElementById('dc-pickup-reg-ct')?.value) || 0;
   if (!time) { alert('Ingresá la hora de salida.'); return; }
   if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
+  if (isBlock && _hoursFromTimes(dc.hora_ingreso, time) <= 0) {
+    alert('La hora de salida debe ser posterior a la hora de ingreso.'); return;
+  }
   const dcs = DB.daycares;
   const idx = dcs.findIndex(d => d.id === dcId);
   if (idx < 0) return;
   dcs[idx] = { ...dcs[idx], departure_time: time, registered_by_ct_id: regCtId };
-  // If hourly, recalculate final total based on actual hours
-  if (dcs[idx].billing_type === 'hourly' && dcs[idx].hora_ingreso) {
+  if (isBlock) {
     dcs[idx].hora_salida = time;
-    // Clear manual_total so calcDaycareBaseTotal recalculates from actual hours
     delete dcs[idx].manual_total;
   }
   DB.saveDaycares(dcs);
   closeModal('modal-dc-pickup');
   renderSalidasPage();
+  renderIncome();
 }
 
 function renderSalidasPending() {
