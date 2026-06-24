@@ -1001,6 +1001,7 @@ tr:hover td { background: var(--gray-50); }
         <div class="page-title">Cuidadoras</div>
         <div class="flex gap8">
           <button class="btn btn-secondary" onclick="openVacationModal()">🏖 Vacaciones</button>
+          <button class="btn btn-secondary" onclick="forceSyncCaretakers(this)" title="Subir cuidadoras al servidor para que otros dispositivos las vean">☁️ Sincronizar</button>
           <button class="btn btn-primary" onclick="openCaretakerModal()">+ Nueva cuidadora</button>
         </div>
       </div>
@@ -8983,6 +8984,25 @@ function switchPhoneTab(tab, btn) {
   btn.classList.add('active');
   document.getElementById('ph-tab-' + tab).classList.add('active');
   if (tab === 'mes') renderPhoneMonth();
+}
+
+async function forceSyncCaretakers(btn) {
+  const cts = DB.caretakers;
+  if (!cts.length) { alert('No hay cuidadoras en este dispositivo para sincronizar.'); return; }
+  if (!_sb) { alert('Sin conexión con el servidor. Recargá la página e intentá de nuevo.'); return; }
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Sincronizando...'; btn.disabled = true;
+  try {
+    await _sb.from('aldea_store').upsert(
+      { key: 'aldea_caretakers', value: cts, updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    );
+    btn.textContent = '✓ Sincronizado';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2000);
+  } catch(e) {
+    alert('Error al sincronizar: ' + e.message);
+    btn.textContent = orig; btn.disabled = false;
+  }
 }
 
 function renderCaretakersPage() {
