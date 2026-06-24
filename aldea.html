@@ -1988,6 +1988,30 @@ tr:hover td { background: var(--gray-50); }
   </div>
 </div>
 
+<!-- Modal doble validación vacaciones -->
+<div class="modal-overlay" id="modal-dual-pw">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">🔒 Doble validación requerida</div>
+    <div id="dual-pw-desc" style="font-size:13px;color:var(--text-muted);margin-bottom:16px">Para continuar se requiere la contraseña de ambas cuidadoras.</div>
+    <div id="dual-pw-error" style="display:none;background:#fef2f2;color:#b91c1c;border-radius:8px;padding:10px;font-size:13px;margin-bottom:12px"></div>
+    <div class="form-group">
+      <label id="dual-pw-label-1">Contraseña de Daniela</label>
+      <input type="password" id="dual-pw-input-1" placeholder="Contraseña" onkeydown="if(event.key==='Enter')_dualPwConfirm()">
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label id="dual-pw-label-2">Contraseña de Valentina</label>
+      <input type="password" id="dual-pw-input-2" placeholder="Contraseña" onkeydown="if(event.key==='Enter')_dualPwConfirm()">
+    </div>
+    <div style="font-size:12px;color:var(--text-muted);margin-top:10px;padding:10px;background:var(--surface-raised,#f5f5f5);border-radius:6px;line-height:1.5">
+      Si la otra cuidadora no está presente, dejá su contraseña en blanco. La vacación quedará <strong>Pendiente de segunda validación</strong> hasta que ella confirme o pasen 5 días.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="_dualPwCancel()">Cancelar</button>
+      <button class="btn btn-primary" onclick="_dualPwConfirm()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal recuperación de contraseña -->
 <div class="modal-overlay" id="modal-ct-recovery">
   <div class="modal" style="max-width:400px">
@@ -8073,6 +8097,108 @@ function _ctPwCancel() {
   _ctPwCancelCb && _ctPwCancelCb();
 }
 
+// ---- Dual password validation (Daniela & Valentina) ----
+let _dualPwCt1 = null, _dualPwCt2 = null;
+let _dualPwOnBoth = null, _dualPwOnOne = null, _dualPwOnCancel = null;
+let _dualPwStrict = false;
+
+function _isDualValidationRequired(ctId) {
+  const ct = DB.caretakers.find(c => c.id === ctId);
+  if (!ct) return false;
+  const n = ct.name.toLowerCase();
+  return n.includes('daniela') || n.includes('valentina');
+}
+
+function _dualPwValidate(vacCtId, actionLabel, onBothValidated, onOneValidated, onCancelCb, strict) {
+  const cts = DB.caretakers;
+  const daniela = cts.find(c => c.name.toLowerCase().includes('daniela') && c.status === 'activa') || cts.find(c => c.name.toLowerCase().includes('daniela'));
+  const valentina = cts.find(c => c.name.toLowerCase().includes('valentina') && c.status === 'activa') || cts.find(c => c.name.toLowerCase().includes('valentina'));
+  if (!daniela || !valentina) {
+    promptCaretakerPassword(vacCtId, actionLabel, onBothValidated, onCancelCb);
+    return;
+  }
+  _dualPwCt1 = daniela;
+  _dualPwCt2 = valentina;
+  _dualPwOnBoth = onBothValidated;
+  _dualPwOnOne = onOneValidated;
+  _dualPwOnCancel = onCancelCb;
+  _dualPwStrict = !!strict;
+  document.getElementById('dual-pw-desc').textContent = `Para "${actionLabel}" se requiere la contraseña de ambas cuidadoras.`;
+  document.getElementById('dual-pw-label-1').textContent = `Contraseña de ${daniela.name}`;
+  document.getElementById('dual-pw-label-2').textContent = `Contraseña de ${valentina.name}`;
+  document.getElementById('dual-pw-input-1').value = '';
+  document.getElementById('dual-pw-input-2').value = '';
+  document.getElementById('dual-pw-error').style.display = 'none';
+  openModal('modal-dual-pw');
+  setTimeout(() => document.getElementById('dual-pw-input-1')?.focus(), 100);
+}
+
+function _dualPwConfirm() {
+  const pw1 = document.getElementById('dual-pw-input-1').value;
+  const pw2 = document.getElementById('dual-pw-input-2').value;
+  const errEl = document.getElementById('dual-pw-error');
+  const ok1 = !_dualPwCt1.password || pw1 === _dualPwCt1.password;
+  const ok2 = !_dualPwCt2.password || pw2 === _dualPwCt2.password;
+  const entered1 = pw1.length > 0;
+  const entered2 = pw2.length > 0;
+  if (entered1 && !ok1) { errEl.textContent = `Contraseña incorrecta para ${_dualPwCt1.name}.`; errEl.style.display = 'block'; return; }
+  if (entered2 && !ok2) { errEl.textContent = `Contraseña incorrecta para ${_dualPwCt2.name}.`; errEl.style.display = 'block'; return; }
+  if (!entered1 && !entered2) { errEl.textContent = 'Ingresá al menos la contraseña de la cuidadora que está registrando.'; errEl.style.display = 'block'; return; }
+  const bothOk = ok1 && ok2 && entered1 && entered2;
+  if (_dualPwStrict && !bothOk) {
+    const missing = (!entered1 || !ok1) ? _dualPwCt1.name : _dualPwCt2.name;
+    errEl.textContent = `Para esta acción se requieren las contraseñas de ambas. Falta la contraseña de ${missing}.`;
+    errEl.style.display = 'block';
+    return;
+  }
+  closeModal('modal-dual-pw');
+  if (bothOk) {
+    _dualPwOnBoth && _dualPwOnBoth([_dualPwCt1.id, _dualPwCt2.id]);
+  } else {
+    const validatedId = (entered1 && ok1) ? _dualPwCt1.id : _dualPwCt2.id;
+    const pendingId   = (entered1 && ok1) ? _dualPwCt2.id : _dualPwCt1.id;
+    _dualPwOnOne && _dualPwOnOne(validatedId, pendingId);
+  }
+}
+
+function _dualPwCancel() {
+  closeModal('modal-dual-pw');
+  _dualPwOnCancel && _dualPwOnCancel();
+}
+
+function _checkAndAutoApprovePendingVacations() {
+  const vacs = DB.vacations;
+  const now = new Date();
+  let changed = false;
+  vacs.forEach(v => {
+    if (v.dual_validation?.status === 'pending') {
+      const days = (now - new Date(v.dual_validation.requested_at)) / 86400000;
+      if (days >= 5) {
+        v.dual_validation = { ...v.dual_validation, status: 'auto_approved', auto_approved_at: now.toISOString() };
+        changed = true;
+      }
+    }
+  });
+  if (changed) DB.saveVacations(vacs);
+}
+
+function validatePendingVacation(vacId) {
+  const vac = DB.vacations.find(v => v.id === vacId);
+  if (!vac || !vac.dual_validation) return;
+  const pendingCtId = vac.dual_validation.pending_ct_id;
+  const ct = DB.caretakers.find(c => c.id === pendingCtId);
+  if (!ct) return;
+  promptCaretakerPassword(pendingCtId, 'validar vacación', () => {
+    const vacs = DB.vacations;
+    const idx = vacs.findIndex(v => v.id === vacId);
+    if (idx < 0) return;
+    const existing = vacs[idx].dual_validation.validated_by || [];
+    vacs[idx] = { ...vacs[idx], dual_validation: { ...vacs[idx].dual_validation, status: 'validated', validated_by: [...existing, pendingCtId], pending_ct_id: null } };
+    DB.saveVacations(vacs);
+    renderCaretakersPage();
+  });
+}
+
 function _auditLog(caretakerId, action, data) {
   const logs = JSON.parse(localStorage.getItem('aldea_audit_log') || '[]');
   logs.push({
@@ -8265,13 +8391,20 @@ function saveVacation() {
   const missing = [!caretaker_id&&'Cuidadora', !start_dt&&'Fecha de salida', !end_dt&&'Fecha de regreso'].filter(Boolean);
   if (missing.length) { alertEl.innerHTML = `<div class="alert alert-danger">Falta completar: ${missing.join(', ')}.</div>`; return; }
   if (end_dt <= start_dt) { alertEl.innerHTML = '<div class="alert alert-danger">El regreso debe ser posterior a la salida.</div>'; return; }
-  promptCaretakerPassword(caretaker_id, 'registrar vacaciones', () => {
-    _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes);
-  });
+  const actionLabel = editingVacationId ? 'modificar vacaciones' : 'registrar vacaciones';
+  if (_isDualValidationRequired(caretaker_id)) {
+    _dualPwValidate(caretaker_id, actionLabel,
+      (validatedIds) => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, { status: 'validated', validated_by: validatedIds, requested_at: new Date().toISOString() }),
+      (validatedId, pendingId) => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, { status: 'pending', validated_by: [validatedId], pending_ct_id: pendingId, requested_at: new Date().toISOString() })
+    );
+  } else {
+    promptCaretakerPassword(caretaker_id, actionLabel, () => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, null));
+  }
 }
-function _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes) {
+function _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, dualValidation) {
   const vacs = DB.vacations;
-  const obj = { caretaker_id, start_dt, end_dt, status, notes };
+  const obj = { caretaker_id, start_dt, end_dt, status, notes,
+    ...(dualValidation ? { dual_validation: dualValidation } : {}) };
   if (editingVacationId) {
     const i = vacs.findIndex(x => x.id === editingVacationId);
     vacs[i] = { ...vacs[i], ...obj };
@@ -8377,10 +8510,17 @@ function deleteVacation(id) {
   if (!confirm('¿Eliminar este período vacacional?')) return;
   const vac = DB.vacations.find(v => v.id === id);
   if (!vac) return;
-  promptCaretakerPassword(vac.caretaker_id, 'eliminar vacaciones', () => {
-    DB.saveVacations(DB.vacations.filter(v => v.id !== id));
-    renderCaretakersPage();
-  });
+  if (_isDualValidationRequired(vac.caretaker_id)) {
+    _dualPwValidate(vac.caretaker_id, 'eliminar vacaciones',
+      () => { DB.saveVacations(DB.vacations.filter(v => v.id !== id)); renderCaretakersPage(); },
+      null, null, true
+    );
+  } else {
+    promptCaretakerPassword(vac.caretaker_id, 'eliminar vacaciones', () => {
+      DB.saveVacations(DB.vacations.filter(v => v.id !== id));
+      renderCaretakersPage();
+    });
+  }
 }
 
 // ---- Assignment change ----
@@ -9350,6 +9490,7 @@ function renderVacComparativo() {
 }
 
 function renderCaretakersVacations() {
+  _checkAndAutoApprovePendingVacations();
   const el = document.getElementById('ct-vac-wrap');
   const cts = DB.caretakers;
   const now = new Date();
@@ -9426,14 +9567,36 @@ function renderCaretakersVacations() {
       <tbody>${allVacs.map(v => {
         const c = DB.caretakers.find(x => x.id === v.caretaker_id);
         const hours = Math.round((new Date(v.end_dt) - new Date(v.start_dt)) / 3600000);
-        return `<tr>
-          <td><strong>${c?.name||'?'}</strong></td>
+        const dv = v.dual_validation;
+        const isPending = dv?.status === 'pending';
+        const isAutoApproved = dv?.status === 'auto_approved';
+        const pendingCt = isPending ? DB.caretakers.find(x => x.id === dv.pending_ct_id) : null;
+        const validationBadge = isPending
+          ? `<div style="margin-top:4px"><span class="badge badge-amber" style="font-size:10px">⏳ Pendiente de validación</span></div>`
+          : isAutoApproved
+          ? `<div style="margin-top:4px"><span class="badge badge-gray" style="font-size:10px">⚠ Auto-aprobada sin segunda validación</span></div>`
+          : '';
+        const disclaimer = isAutoApproved
+          ? `<div style="font-size:11px;color:var(--amber-800,#92400e);background:var(--amber-50,#fffbeb);border:1px solid var(--amber-200,#fde68a);border-radius:6px;padding:6px 8px;margin-top:4px">
+              ⚠ Vacación registrada sin segunda validación. La otra cuidadora no ingresó su contraseña dentro del plazo de 5 días.
+             </div>` : '';
+        const pendingInfo = isPending
+          ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">Pendiente: <strong>${pendingCt?.name||'?'}</strong></div>` : '';
+        const rowBg = isPending ? 'background:var(--amber-50,#fffbeb)' : isAutoApproved ? 'background:#fff8f0' : '';
+        return `<tr style="${rowBg}">
+          <td>
+            <strong>${c?.name||'?'}</strong>
+            ${validationBadge}
+            ${pendingInfo}
+            ${disclaimer}
+          </td>
           <td class="text-sm">${v.start_dt.replace('T',' ')}</td>
           <td class="text-sm">${v.end_dt.replace('T',' ')}</td>
           <td class="text-sm">${fmtVacDuration(hours)}</td>
           <td><span class="badge ${sMap[v.status]||'badge-gray'}">${v.status}</span></td>
           <td class="text-muted text-sm">${v.notes||'—'}</td>
           <td style="white-space:nowrap">
+            ${isPending ? `<button class="btn btn-primary btn-sm" style="margin-bottom:4px" onclick="validatePendingVacation(${v.id})">✓ Validar</button><br>` : ''}
             <button class="btn btn-secondary btn-sm" onclick="openVacationModal(${v.id})">Editar</button>
             <button class="btn btn-danger btn-sm" onclick="deleteVacation(${v.id})">✕</button>
           </td>
