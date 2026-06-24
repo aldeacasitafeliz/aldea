@@ -2386,10 +2386,30 @@ async function _sbSync(key, value) {
 async function initSupabase() {
   try {
     _sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-    // Load all data from Supabase into localStorage
+    // Pull all data from Supabase into localStorage
     const { data } = await _sb.from('aldea_store').select('key, value');
+    const sbKeys = new Set();
     if (data && data.length) {
-      data.forEach(row => localStorage.setItem(row.key, JSON.stringify(row.value)));
+      data.forEach(row => {
+        localStorage.setItem(row.key, JSON.stringify(row.value));
+        sbKeys.add(row.key);
+      });
+    }
+    // Push any local keys missing from Supabase (e.g. created before Supabase was set up)
+    const upserts = [];
+    for (const key of SYNC_KEYS) {
+      if (sbKeys.has(key)) continue;
+      const local = localStorage.getItem(key);
+      if (!local) continue;
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          upserts.push({ key, value: parsed, updated_at: new Date().toISOString() });
+        }
+      } catch(e) {}
+    }
+    if (upserts.length) {
+      await _sb.from('aldea_store').upsert(upserts, { onConflict: 'key' });
     }
     // Real-time subscription
     _sb.channel('aldea_realtime')
