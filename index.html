@@ -2709,11 +2709,12 @@ function getLeavingDogs(date) {
   return DB.stays.filter(s => {
     return s.service_type === 'hospedaje' &&
       s.check_out_date === date &&
-      s.status !== 'cancelado';
+      s.status !== 'cancelado' &&
+      !s.pickup_time;
   });
 }
 function getDaycareDogs(date) {
-  return DB.daycares.filter(d => d.date === date);
+  return DB.daycares.filter(d => d.date === date && !d.departure_time);
 }
 function getPresentDogs(date) {
   const hosted = getHostedDogs(date).map(s => s.dog_id);
