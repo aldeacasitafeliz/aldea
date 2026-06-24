@@ -7035,6 +7035,14 @@ function openDaycarePickupModal(dcId) {
   }
   document.getElementById('modal-dc-pickup-inner').innerHTML = html;
   openModal('modal-dc-pickup');
+  // Auto-select assigned caretaker for today
+  const _dcAsgns = getAssignments(dcId, 'daycare');
+  const _todayStr = today();
+  const _dcActiveAsgn = _dcAsgns.find(a => (!a.from_dt || a.from_dt.slice(0,10) <= _todayStr) && (!a.to_dt || a.to_dt.slice(0,10) >= _todayStr));
+  if (_dcActiveAsgn) {
+    const _sel = document.getElementById('dc-pickup-reg-ct');
+    if (_sel) _sel.value = _dcActiveAsgn.caretaker_id;
+  }
   updateDcPickupPreview(dcId);
 }
 
@@ -7218,6 +7226,14 @@ function openPickupModal(stayId) {
   document.getElementById('pickup-notes').value = '';
   document.querySelectorAll('input[name="pickup-late"]')[0].checked = true;
   populateRegCtSelect('pickup-reg-ct');
+  // Auto-select assigned caretaker for today if there is one
+  const todayStr = today();
+  const asgns = getAssignments(stayId, 'hospedaje');
+  const activeAsgn = asgns.find(a => (!a.from_dt || a.from_dt.slice(0,10) <= todayStr) && (!a.to_dt || a.to_dt.slice(0,10) >= todayStr));
+  if (activeAsgn) {
+    const sel = document.getElementById('pickup-reg-ct');
+    if (sel) sel.value = activeAsgn.caretaker_id;
+  }
   updatePickupPreview();
   openModal('modal-pickup');
 }
