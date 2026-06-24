@@ -1583,12 +1583,6 @@ tr:hover td { background: var(--gray-50); }
     </div><!-- /stay-step-3 -->
     <!-- STEP 4: Cuidadora -->
     <div id="stay-step-4">
-    <div id="stay-reg-ct-group" style="margin-bottom:16px">
-      <div class="form-group">
-        <label>Cuidadora que registra *</label>
-        <div id="stay-reg-ct-wrap"></div>
-      </div>
-    </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
       <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px">Cuidadora asignada</div>
       <div class="form-grid">
@@ -3195,12 +3189,6 @@ function clearStayForm() {
   document.querySelectorAll('input[name="stay-manual"]')[0].checked = true;
   document.getElementById('stay-manual-section').style.display = 'none';
   document.getElementById('stay-manual-amount').value = '';
-  // reg-ct: show on new, hide on edit (editingStayId is set before clearStayForm is called)
-  const stayRegGroup = document.getElementById('stay-reg-ct-group');
-  if (stayRegGroup) {
-    stayRegGroup.style.display = editingStayId ? 'none' : '';
-    if (!editingStayId) { _fillStayRegCtSelect(); }
-  }
 }
 
 // ===================== DOGS =====================
@@ -4329,38 +4317,6 @@ function dogInputKeydown(e) {
   }
 }
 
-async function _fillStayRegCtSelect() {
-  const wrap = document.getElementById('stay-reg-ct-wrap');
-  if (!wrap) return;
-  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px">⏳ Cargando cuidadoras...</div>';
-
-  let activas = [];
-  if (_sb) {
-    try {
-      const { data } = await _sb.from('aldea_store').select('value').eq('key', 'aldea_caretakers');
-      if (data && data[0] && Array.isArray(data[0].value)) {
-        activas = data[0].value.filter(c => c.status === 'activa');
-        localStorage.setItem('aldea_caretakers', JSON.stringify(data[0].value));
-      }
-    } catch(e) {}
-  }
-  if (!activas.length) {
-    try { activas = JSON.parse(localStorage.getItem('aldea_caretakers') || '[]').filter(c => c.status === 'activa'); } catch(e) {}
-  }
-
-  if (!activas.length) {
-    wrap.innerHTML = '<div style="color:var(--red-800);font-size:13px">⚠️ Sin cuidadoras. Andá a Cuidadoras → ☁️ Sincronizar y recargá la página.</div>';
-    return;
-  }
-
-  const sel = document.createElement('select');
-  sel.id = 'stay-reg-ct';
-  sel.className = 'form-control';
-  sel.innerHTML = '<option value="">— Seleccionar —</option>' +
-    activas.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  wrap.innerHTML = '';
-  wrap.appendChild(sel);
-}
 
 
 function populateRegCtSelect(elId) {
@@ -5152,11 +5108,6 @@ function saveStay() {
   const manualVal = document.querySelector('input[name="stay-manual"]:checked')?.value;
   const manualAmt = manualVal === 'si' ? (parseFloat(document.getElementById('stay-manual-amount')?.value) ?? null) : null;
   const rateType = document.getElementById('stay-rate-type')?.value || 'daily';
-  const regCtId = editingStayId ? 0 : (parseInt(document.getElementById('stay-reg-ct').value) || 0);
-  if (!editingStayId && !regCtId) {
-    alertEl.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
-    return;
-  }
   const obj = { dog_id: dogId, check_in_date: checkin, check_out_date: isOpenEnded ? '' : checkout, daily_rate: rate, rate_type: rateType, service_type: 'hospedaje', is_exchange: exchange, late_pickup: late, status: isOpenEnded ? 'activo' : status, notes, open_ended: isOpenEnded || false,
     ...(discountPct > 0 && manualAmt == null ? { discount_pct: discountPct } : {}),
     ...(manualAmt != null ? { manual_total: manualAmt } : {}),
@@ -5165,7 +5116,7 @@ function saveStay() {
     const i = stays.findIndex(s => s.id === editingStayId);
     stays[i] = { ...stays[i], ...obj };
   } else {
-    stays.push({ id: DB.nextId(stays), ...obj, registered_by_ct_id: regCtId });
+    stays.push({ id: DB.nextId(stays), ...obj });
   }
   DB.saveStays(stays);
 
@@ -5219,6 +5170,59 @@ function saveStay() {
   closeModal('modal-stay');
   renderStaysTable();
   updateSalidasDot();
+
+  if (!editingStayId) {
+    const newStayId = DB.stays[DB.stays.length - 1]?.id;
+    if (newStayId) _openRegCtPopup(newStayId);
+  }
+}
+
+async function _openRegCtPopup(stayId) {
+  let activas = [];
+  if (_sb) {
+    try {
+      const { data } = await _sb.from('aldea_store').select('value').eq('key', 'aldea_caretakers');
+      if (data && data[0] && Array.isArray(data[0].value)) {
+        activas = data[0].value.filter(c => c.status === 'activa');
+        localStorage.setItem('aldea_caretakers', JSON.stringify(data[0].value));
+      }
+    } catch(e) {}
+  }
+  if (!activas.length) {
+    try { activas = JSON.parse(localStorage.getItem('aldea_caretakers') || '[]').filter(c => c.status === 'activa'); } catch(e) {}
+  }
+
+  const opts = activas.length
+    ? '<option value="">— Seleccionar —</option>' + activas.map(c => `<option value="${c.id}">${c.name}</option>`).join('')
+    : '<option value="">⚠️ Sin cuidadoras disponibles</option>';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'reg-ct-popup-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:var(--surface);border-radius:12px;padding:28px 24px;width:320px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.25)">
+      <div style="font-size:17px;font-weight:700;margin-bottom:6px">¿Quién registra?</div>
+      <div style="font-size:13px;color:var(--text-muted);margin-bottom:18px">Indicá la cuidadora que está registrando este hospedaje.</div>
+      <select id="reg-ct-popup-sel" class="form-control" style="margin-bottom:20px">${opts}</select>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" style="flex:1" onclick="saveRegCtPopup(${stayId})">Guardar</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('reg-ct-popup-overlay').remove()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function saveRegCtPopup(stayId) {
+  const sel = document.getElementById('reg-ct-popup-sel');
+  const ctId = parseInt(sel?.value) || 0;
+  if (!ctId) { alert('Seleccioná la cuidadora que registra.'); return; }
+  const stays = DB.stays;
+  const idx = stays.findIndex(s => s.id === stayId);
+  if (idx >= 0) {
+    stays[idx] = { ...stays[idx], registered_by_ct_id: ctId };
+    DB.saveStays(stays);
+  }
+  document.getElementById('reg-ct-popup-overlay').remove();
 }
 
 function deleteStay(id) {
