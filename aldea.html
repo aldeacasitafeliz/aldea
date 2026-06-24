@@ -1586,9 +1586,9 @@ tr:hover td { background: var(--gray-50); }
     <div id="stay-reg-ct-group" style="margin-bottom:16px">
       <div class="form-group">
         <label>Cuidadora que registra *</label>
-        <select id="stay-reg-ct" style="display:none"></select>
-        <div id="stay-reg-ct-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
-        <div id="stay-reg-ct-msg" style="font-size:12px;color:var(--text-muted);margin-top:4px;display:none"></div>
+        <select id="stay-reg-ct">
+          <option value="">— Seleccionar —</option>
+        </select>
       </div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
@@ -3201,7 +3201,7 @@ function clearStayForm() {
   const stayRegGroup = document.getElementById('stay-reg-ct-group');
   if (stayRegGroup) {
     stayRegGroup.style.display = editingStayId ? 'none' : '';
-    if (!editingStayId) { renderStayRegCtButtons(); }
+    if (!editingStayId) { populateRegCtSelect('stay-reg-ct'); document.getElementById('stay-reg-ct').value = ''; }
   }
 }
 
