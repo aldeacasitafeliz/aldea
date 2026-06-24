@@ -672,7 +672,7 @@ tr:hover td { background: var(--gray-50); }
       <span class="nav-icon">🐶</span> Perros
     </div>
     <div class="nav-item" onclick="showPage('reservas')">
-      <span class="nav-icon">📌</span> Reservas
+      <span class="nav-icon">📌</span> Reservas <span id="reservas-alert-dot" style="display:none;width:8px;height:8px;background:var(--red-500,#ef4444);border-radius:50%;margin-left:4px;vertical-align:middle"></span>
     </div>
     <div class="nav-item" onclick="showPage('stays')">
       <span class="nav-icon">🏠</span> Hospedaje
@@ -5940,6 +5940,16 @@ function renderDashboard() {
     const c = DB.caretakers.find(x => x.id === v.caretaker_id);
     alerts += `<div class="alert alert-info">📅 <strong>${c?.name||'?'}</strong> sale de vacaciones el ${v.start_dt.replace('T',' ')}.</div>`;
   });
+  // Pending reservas due today or overdue
+  const pendingReservasDue = DB.reservas.filter(r => {
+    if (r.status !== 'pendiente') return false;
+    const rd = r.type === 'hospedaje' ? r.reserved_from : r.date;
+    return rd && rd <= d;
+  });
+  if (pendingReservasDue.length) {
+    alerts += `<div class="alert alert-danger" style="cursor:pointer" onclick="showPage('reservas')">🔴 <strong>${pendingReservasDue.length} reserva${pendingReservasDue.length!==1?'s':''} pendiente${pendingReservasDue.length!==1?'s':''} de activar</strong> — ir a Reservas para activarlas.</div>`;
+  }
+
   // Overdue stays
   const overdueStays = hosted.filter(s => !s.open_ended && s.check_out_date && s.check_out_date < d);
   overdueStays.forEach(s => {
@@ -5966,6 +5976,8 @@ function renderDashboard() {
   if (withIncidents.length) alerts += `<div class="alert alert-warn">📋 Con incidencias previas: ${withIncidents.map(d=>`<strong>${d.name}</strong>`).join(', ')}.</div>`;
 
   document.getElementById('dash-alerts').innerHTML = alerts;
+  updateReservasDot();
+  updateSalidasDot();
 
   // Lists
   function dogListHTML(list, emptyMsg) {
@@ -7143,13 +7155,23 @@ function renderSalidasPage() {
 
 function updateSalidasDot() {
   const t = today();
-  const pendingFixed = DB.stays.filter(s =>
+  const pending = DB.stays.filter(s =>
     s.service_type === 'hospedaje' && s.status !== 'cancelado' &&
-    !s.open_ended && s.check_out_date === t && !s.pickup_time
+    !s.open_ended && s.check_out_date && s.check_out_date <= t && !s.pickup_time
   );
-  const openEnded = getOpenEndedStays();
   const dot = document.getElementById('salidas-alert-dot');
-  if (dot) dot.style.display = (pendingFixed.length || openEnded.length) ? 'inline-block' : 'none';
+  if (dot) dot.style.display = pending.length ? 'inline-block' : 'none';
+}
+
+function updateReservasDot() {
+  const t = today();
+  const pendingDue = DB.reservas.filter(r => {
+    if (r.status !== 'pendiente') return false;
+    const d = r.type === 'hospedaje' ? r.reserved_from : r.date;
+    return d && d <= t;
+  });
+  const dot = document.getElementById('reservas-alert-dot');
+  if (dot) dot.style.display = pendingDue.length ? 'inline-block' : 'none';
 }
 
 function openDaycarePickupModal(dcId) {
@@ -11727,24 +11749,45 @@ function _switchReservasTabTo(tab) {
 }
 
 function renderReservasPage() {
+  updateReservasDot();
   const el = document.getElementById('reservas-content');
+  const t = today();
   const reservas = DB.reservas.filter(r => r.status === _reservasTab)
     .sort((a,b) => (a.reserved_from||a.date||'').localeCompare(b.reserved_from||b.date||''));
+
+  // Alert banner for pending tab
+  let banner = '';
+  if (_reservasTab === 'pendiente') {
+    const overdue = reservas.filter(r => { const d = r.type==='hospedaje'?r.reserved_from:r.date; return d && d <= t; });
+    if (overdue.length) {
+      banner = `<div class="alert alert-danger" style="margin-bottom:12px">🔴 <strong>${overdue.length} reserva${overdue.length!==1?'s':''} pendiente${overdue.length!==1?'s':''} de activar</strong> — la${overdue.length!==1?'s':''} fecha${overdue.length!==1?'s':''} de ingreso ya llegaron.</div>`;
+    }
+  }
+
   if (!reservas.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📌</div><p>No hay reservas ${_reservasTab==='pendiente'?'pendientes':_reservasTab==='activa'?'activadas':'caídas'}.</p></div>`;
+    el.innerHTML = banner + `<div class="empty-state"><div class="empty-icon">📌</div><p>No hay reservas ${_reservasTab==='pendiente'?'pendientes':_reservasTab==='activa'?'activadas':'caídas'}.</p></div>`;
     return;
   }
-  el.innerHTML = `<table><thead><tr>
+  el.innerHTML = banner + `<table><thead><tr>
     <th>Tipo</th><th>Perro</th><th>Fecha</th><th>Salida</th><th>Tarifa</th><th>Estado</th><th></th>
   </tr></thead><tbody>${reservas.map(r => {
     const dog = DB.getDog(r.dog_id);
+    const reservaDate = r.type === 'hospedaje' ? r.reserved_from : r.date;
+    const isOverdue = r.status === 'pendiente' && reservaDate && reservaDate <= t;
+    const daysPending = isOverdue ? dateDiff(reservaDate, t) : 0;
+    const overdueLabel = daysPending === 0 ? 'Pendiente de activar hoy' : `Pendiente desde hace ${daysPending} día${daysPending!==1?'s':''}`;
     const dateLabel = r.type === 'hospedaje' ? fmtDate(r.reserved_from) : fmtDate(r.date);
     const outLabel = r.type === 'hospedaje' ? (r.open_ended ? '<span class="badge badge-amber">Abierto</span>' : fmtDate(r.check_out_date)) : '—';
     const rateLabel = r.type === 'hospedaje' ? `S/ ${r.rate}/${r.rate_type||'noche'}` : `S/ ${r.rate}`;
-    return `<tr>
+    return `<tr style="${isOverdue?'background:var(--red-50,#fef2f2)':''}">
       <td><span class="chip" style="background:${r.type==='hospedaje'?'var(--green-100)':'var(--blue-100)'};color:${r.type==='hospedaje'?'var(--green-800)':'var(--blue-800)'}">${r.type==='hospedaje'?'🏠 Hospedaje':'☀️ Daycare'}</span></td>
-      <td><strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span></td>
-      <td>${dateLabel}</td>
+      <td>
+        <strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
+        ${isOverdue?`<div style="font-size:11px;color:var(--red-700,#b91c1c);font-weight:600;margin-top:2px">⚠ ${overdueLabel}</div>`:''}
+      </td>
+      <td style="${isOverdue?'color:var(--red-700,#b91c1c);font-weight:600':''}">
+        ${dateLabel}
+      </td>
       <td>${outLabel}</td>
       <td>${rateLabel}</td>
       <td>${r.status==='pendiente'?'<span class="badge badge-amber">Pendiente</span>':r.status==='activa'?'<span class="badge badge-green">Activada</span>':'<span class="badge badge-gray">Caída</span>'}</td>
