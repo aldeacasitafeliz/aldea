@@ -5206,10 +5206,18 @@ async function _openRegCtPopup(stayId) {
       <select id="reg-ct-popup-sel" class="form-control" style="margin-bottom:20px">${opts}</select>
       <div style="display:flex;gap:10px">
         <button class="btn btn-primary" style="flex:1" onclick="saveRegCtPopup(${stayId})">Guardar</button>
-        <button class="btn btn-secondary" style="flex:1" onclick="document.getElementById('reg-ct-popup-overlay').remove()">Cancelar</button>
+        <button class="btn btn-secondary" style="flex:1" onclick="cancelRegCtPopup(${stayId})">Cancelar</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
+}
+
+function cancelRegCtPopup(stayId) {
+  DB.saveStays(DB.stays.filter(s => s.id !== stayId));
+  DB.savePayments(DB.payments.filter(p => p.stay_id !== stayId));
+  renderStaysTable();
+  updateSalidasDot();
+  document.getElementById('reg-ct-popup-overlay').remove();
 }
 
 function saveRegCtPopup(stayId) {
