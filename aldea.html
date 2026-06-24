@@ -5215,6 +5215,7 @@ async function _openRegCtPopup(stayId) {
 function cancelRegCtPopup(stayId) {
   DB.saveStays(DB.stays.filter(s => s.id !== stayId));
   DB.savePayments(DB.payments.filter(p => p.stay_id !== stayId));
+  DB.saveAssignments(DB.assignments.filter(a => !(a.ref_id === stayId && a.service_type === 'hospedaje')));
   renderStaysTable();
   updateSalidasDot();
   document.getElementById('reg-ct-popup-overlay').remove();
