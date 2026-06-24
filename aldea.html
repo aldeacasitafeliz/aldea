@@ -1586,9 +1586,9 @@ tr:hover td { background: var(--gray-50); }
     <div id="stay-reg-ct-group" style="margin-bottom:16px">
       <div class="form-group">
         <label>Cuidadora que registra *</label>
-        <select id="stay-reg-ct">
-          <option value="">— Seleccionar —</option>
-        </select>
+        <select id="stay-reg-ct" style="display:none"></select>
+        <div id="stay-reg-ct-btns" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px"></div>
+        <div id="stay-reg-ct-msg" style="font-size:12px;color:var(--text-muted);margin-top:4px;display:none"></div>
       </div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
@@ -3201,7 +3201,7 @@ function clearStayForm() {
   const stayRegGroup = document.getElementById('stay-reg-ct-group');
   if (stayRegGroup) {
     stayRegGroup.style.display = editingStayId ? 'none' : '';
-    if (!editingStayId) { populateRegCtSelect('stay-reg-ct'); document.getElementById('stay-reg-ct').value = ''; }
+    if (!editingStayId) { renderStayRegCtButtons(); }
   }
 }
 
@@ -4329,6 +4329,70 @@ function dogInputKeydown(e) {
   } else if (e.key === 'Escape') {
     document.getElementById('stay-dog-dropdown').style.display = 'none';
   }
+}
+
+function renderStayRegCtButtons(selectedId) {
+  const container = document.getElementById('stay-reg-ct-btns');
+  const sel = document.getElementById('stay-reg-ct');
+  const msg = document.getElementById('stay-reg-ct-msg');
+  if (!container || !sel) return;
+
+  let all = DB.caretakers.filter(c => c.status === 'activa');
+  if (!all.length) all = DB.caretakers;
+
+  if (!all.length) {
+    container.innerHTML = '';
+    msg.style.display = 'block';
+    msg.style.color = 'var(--text-muted)';
+    msg.textContent = '⏳ Cargando cuidadoras...';
+    if (_sb) {
+      _sb.from('aldea_store').select('key, value').eq('key', 'aldea_caretakers').then(({ data }) => {
+        if (data && data[0]) {
+          const val = data[0].value;
+          localStorage.setItem('aldea_caretakers', Array.isArray(val) ? JSON.stringify(val) : JSON.stringify(val));
+        }
+        let cts = DB.caretakers.filter(c => c.status === 'activa');
+        if (!cts.length) cts = DB.caretakers;
+        if (cts.length) { renderStayRegCtButtons(); }
+        else { msg.textContent = '⚠️ Sin conexión. Andá a Cuidadoras → ☁️ Sincronizar y volvé.'; msg.style.color = 'var(--red-800)'; }
+      }).catch(() => {
+        msg.textContent = '⚠️ Sin conexión. Andá a Cuidadoras → ☁️ Sincronizar y volvé.';
+        msg.style.color = 'var(--red-800)';
+      });
+    } else {
+      msg.textContent = '⚠️ Sin conexión. Recargá la página.';
+      msg.style.color = 'var(--red-800)';
+    }
+    return;
+  }
+
+  msg.style.display = 'none';
+  sel.innerHTML = '<option value="">— Seleccionar —</option>' +
+    all.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  sel.value = selectedId || '';
+
+  container.innerHTML = '';
+  all.forEach(c => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = c.name;
+    const isSelected = String(c.id) === String(selectedId || '');
+    btn.style.cssText = `padding:10px 18px;border-radius:8px;border:2px solid ${isSelected ? 'var(--green-600)' : 'var(--border-md)'};background:${isSelected ? 'var(--green-600)' : 'var(--surface)'};color:${isSelected ? '#fff' : 'var(--text)'};font-size:14px;font-weight:${isSelected ? '600' : '400'};cursor:pointer;transition:all .15s`;
+    btn.onclick = () => {
+      sel.value = c.id;
+      container.querySelectorAll('button').forEach(b => {
+        b.style.border = '2px solid var(--border-md)';
+        b.style.background = 'var(--surface)';
+        b.style.color = 'var(--text)';
+        b.style.fontWeight = '400';
+      });
+      btn.style.border = '2px solid var(--green-600)';
+      btn.style.background = 'var(--green-600)';
+      btn.style.color = '#fff';
+      btn.style.fontWeight = '600';
+    };
+    container.appendChild(btn);
+  });
 }
 
 function populateRegCtSelect(elId) {
