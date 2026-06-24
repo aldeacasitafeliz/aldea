@@ -1586,8 +1586,7 @@ tr:hover td { background: var(--gray-50); }
     <div id="stay-reg-ct-group" style="margin-bottom:16px">
       <div class="form-group">
         <label>Cuidadora que registra *</label>
-        <select id="stay-reg-ct"><option value="">— Cargando... —</option></select>
-        <div id="stay-reg-ct-status" style="font-size:12px;margin-top:4px;display:none"></div>
+        <div id="stay-reg-ct-wrap"></div>
       </div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
@@ -4330,114 +4329,39 @@ function dogInputKeydown(e) {
   }
 }
 
-function renderStayRegCtButtons(selectedId) {
-  const container = document.getElementById('stay-reg-ct-btns');
-  const sel = document.getElementById('stay-reg-ct');
-  const msg = document.getElementById('stay-reg-ct-msg');
-  if (!container || !sel) return;
-
-  let all = DB.caretakers.filter(c => c.status === 'activa');
-  if (!all.length) all = DB.caretakers;
-
-  if (!all.length) {
-    container.innerHTML = '';
-    msg.style.display = 'block';
-    msg.style.color = 'var(--text-muted)';
-    msg.textContent = '⏳ Cargando cuidadoras...';
-    if (_sb) {
-      _sb.from('aldea_store').select('key, value').eq('key', 'aldea_caretakers').then(({ data }) => {
-        if (data && data[0]) {
-          const val = data[0].value;
-          localStorage.setItem('aldea_caretakers', Array.isArray(val) ? JSON.stringify(val) : JSON.stringify(val));
-        }
-        let cts = DB.caretakers.filter(c => c.status === 'activa');
-        if (!cts.length) cts = DB.caretakers;
-        if (cts.length) { renderStayRegCtButtons(); }
-        else { msg.textContent = '⚠️ Sin conexión. Andá a Cuidadoras → ☁️ Sincronizar y volvé.'; msg.style.color = 'var(--red-800)'; }
-      }).catch(() => {
-        msg.textContent = '⚠️ Sin conexión. Andá a Cuidadoras → ☁️ Sincronizar y volvé.';
-        msg.style.color = 'var(--red-800)';
-      });
-    } else {
-      msg.textContent = '⚠️ Sin conexión. Recargá la página.';
-      msg.style.color = 'var(--red-800)';
-    }
-    return;
-  }
-
-  msg.style.display = 'none';
-  sel.innerHTML = '<option value="">— Seleccionar —</option>' +
-    all.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-  sel.value = selectedId || '';
-
-  container.innerHTML = '';
-  all.forEach(c => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = c.name;
-    const isSelected = String(c.id) === String(selectedId || '');
-    btn.style.cssText = `padding:10px 18px;border-radius:8px;border:2px solid ${isSelected ? 'var(--green-600)' : 'var(--border-md)'};background:${isSelected ? 'var(--green-600)' : 'var(--surface)'};color:${isSelected ? '#fff' : 'var(--text)'};font-size:14px;font-weight:${isSelected ? '600' : '400'};cursor:pointer;transition:all .15s`;
-    btn.onclick = () => {
-      sel.value = c.id;
-      container.querySelectorAll('button').forEach(b => {
-        b.style.border = '2px solid var(--border-md)';
-        b.style.background = 'var(--surface)';
-        b.style.color = 'var(--text)';
-        b.style.fontWeight = '400';
-      });
-      btn.style.border = '2px solid var(--green-600)';
-      btn.style.background = 'var(--green-600)';
-      btn.style.color = '#fff';
-      btn.style.fontWeight = '600';
-    };
-    container.appendChild(btn);
-  });
-}
-
 async function _fillStayRegCtSelect() {
-  const sel = document.getElementById('stay-reg-ct');
-  const status = document.getElementById('stay-reg-ct-status');
-  if (!sel) return;
+  const wrap = document.getElementById('stay-reg-ct-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '<div style="color:var(--text-muted);font-size:13px">⏳ Cargando cuidadoras...</div>';
 
-  sel.innerHTML = '<option value="">⏳ Cargando cuidadoras...</option>';
-  sel.disabled = true;
-  if (status) { status.style.display = 'none'; }
-
-  let caretakers = [];
-
-  // 1. Intentar cargar directo de Supabase
+  let activas = [];
   if (_sb) {
     try {
-      const { data, error } = await _sb.from('aldea_store').select('value').eq('key', 'aldea_caretakers').single();
-      if (!error && data && Array.isArray(data.value)) {
-        caretakers = data.value;
-        // Actualizar localStorage con dato fresco
-        localStorage.setItem('aldea_caretakers', JSON.stringify(caretakers));
+      const { data } = await _sb.from('aldea_store').select('value').eq('key', 'aldea_caretakers');
+      if (data && data[0] && Array.isArray(data[0].value)) {
+        activas = data[0].value.filter(c => c.status === 'activa');
+        localStorage.setItem('aldea_caretakers', JSON.stringify(data[0].value));
       }
     } catch(e) {}
   }
-
-  // 2. Si Supabase no devolvió nada, usar localStorage
-  if (!caretakers.length) {
-    try { caretakers = JSON.parse(localStorage.getItem('aldea_caretakers') || '[]'); } catch(e) {}
+  if (!activas.length) {
+    try { activas = JSON.parse(localStorage.getItem('aldea_caretakers') || '[]').filter(c => c.status === 'activa'); } catch(e) {}
   }
 
-  const activas = caretakers.filter(c => c.status === 'activa');
-  sel.disabled = false;
-
-  if (activas.length) {
-    sel.innerHTML = '<option value="">— Seleccionar —</option>' +
-      activas.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-    if (status) status.style.display = 'none';
-  } else {
-    sel.innerHTML = '<option value="">— Seleccionar —</option>';
-    if (status) {
-      status.style.display = 'block';
-      status.style.color = 'var(--red-800)';
-      status.innerHTML = '⚠️ No se encontraron cuidadoras. Andá a <strong>Cuidadoras → ☁️ Sincronizar</strong> desde tu laptop y recargá.';
-    }
+  if (!activas.length) {
+    wrap.innerHTML = '<div style="color:var(--red-800);font-size:13px">⚠️ Sin cuidadoras. Andá a Cuidadoras → ☁️ Sincronizar y recargá la página.</div>';
+    return;
   }
+
+  const sel = document.createElement('select');
+  sel.id = 'stay-reg-ct';
+  sel.className = 'form-control';
+  sel.innerHTML = '<option value="">— Seleccionar —</option>' +
+    activas.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  wrap.innerHTML = '';
+  wrap.appendChild(sel);
 }
+
 
 function populateRegCtSelect(elId) {
   const sel = document.getElementById(elId);
