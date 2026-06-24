@@ -1867,7 +1867,7 @@ tr:hover td { background: var(--gray-50); }
         <input type="time" id="pickup-time" class="form-control">
       </div>
       <div class="form-group">
-        <label>Cuidadora que registra</label>
+        <label>Cuidadora que registra *</label>
         <select id="pickup-reg-ct" class="form-control"></select>
       </div>
       <div class="form-group span2">
@@ -4315,6 +4315,16 @@ function populateRegCtSelect(elId) {
   const all = DB.caretakers.filter(c => c.status === 'activa');
   sel.innerHTML = '<option value="">— Seleccionar —</option>' +
     all.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+async function _ensureCaretakersLoaded(callback) {
+  if (DB.caretakers.length > 0) { callback(); return; }
+  if (!_sb) { callback(); return; }
+  try {
+    const { data } = await _sb.from('aldea_store').select('key, value').eq('key', 'aldea_caretakers');
+    if (data && data[0]) localStorage.setItem('aldea_caretakers', JSON.stringify(data[0].value));
+  } catch(e) { console.warn('caretakers sync error', e); }
+  callback();
 }
 
 function populateCtSelect(elId, dateFrom, dateTo) {
@@ -6988,6 +6998,9 @@ function updateSalidasDot() {
 }
 
 function openDaycarePickupModal(dcId) {
+  _ensureCaretakersLoaded(() => _openDaycarePickupModal(dcId));
+}
+function _openDaycarePickupModal(dcId) {
   const dc = DB.daycares.find(d => d.id === dcId);
   if (!dc) return;
   const dog = DB.getDog(dc.dog_id);
@@ -7017,7 +7030,7 @@ function openDaycarePickupModal(dcId) {
     </div>
     <div class="form-grid">
       <div class="form-group"><label>Hora de salida real *</label>${salidaInputHtml}</div>
-      <div class="form-group"><label>Cuidadora que registra</label><select id="dc-pickup-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
+      <div class="form-group"><label>Cuidadora que registra *</label><select id="dc-pickup-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
       <div class="form-group span2"><div id="dc-pickup-preview" style="border-radius:8px;padding:10px 14px;font-size:12px;display:none"></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -7080,6 +7093,7 @@ function saveDaycarePickup(dcId) {
   const time = isBlock ? _getTimeInput('dcp-salida') : document.getElementById('dc-pickup-time')?.value;
   const regCtId = parseInt(document.getElementById('dc-pickup-reg-ct')?.value) || 0;
   if (!time) { alert('Ingresá la hora de salida.'); return; }
+  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
   if (isBlock && _hoursFromTimes(dc.hora_ingreso, time) <= 0) {
     alert('La hora de salida debe ser posterior a la hora de ingreso.'); return;
   }
@@ -7189,6 +7203,9 @@ function renderSalidasPending() {
 }
 
 function openPickupModal(stayId) {
+  _ensureCaretakersLoaded(() => _openPickupModal(stayId));
+}
+function _openPickupModal(stayId) {
   _pickupStayId = stayId;
   const stay = DB.stays.find(s => s.id === stayId);
   const dog = DB.getDog(stay.dog_id);
@@ -7275,6 +7292,7 @@ function savePickup() {
   const late  = document.querySelector('input[name="pickup-late"]:checked')?.value === 'si';
   const notes = document.getElementById('pickup-notes').value.trim();
   const regCtId = parseInt(document.getElementById('pickup-reg-ct').value) || 0;
+  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
   const now   = new Date().toISOString();
   const exitDate = document.getElementById('pickup-date').value;
   if (!exitDate) { alert('Ingresa la fecha real de salida.'); return; }
