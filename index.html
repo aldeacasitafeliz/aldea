@@ -1731,11 +1731,11 @@ tr:hover td { background: var(--gray-50); }
             </div>
             <div class="form-group">
               <label>Hora de ingreso *</label>
-              <div style="display:flex;gap:6px;align-items:center">
-                <input type="number" id="dc-ingreso-h" class="form-control" min="1" max="12" placeholder="HH" style="width:64px" oninput="updateDcBlockPreview()">
-                <span style="font-weight:700">:</span>
-                <input type="number" id="dc-ingreso-m" class="form-control" min="0" max="59" placeholder="MM" style="width:64px" oninput="updateDcBlockPreview()">
-                <select id="dc-ingreso-ampm" class="form-control" style="width:82px" onchange="updateDcBlockPreview()">
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap">
+                <input type="number" id="dc-ingreso-h" min="1" max="12" placeholder="HH" style="width:56px;padding:6px 8px;border:1px solid var(--border-md);border-radius:6px;font-size:14px;text-align:center" oninput="updateDcBlockPreview()">
+                <span style="font-weight:700;color:var(--text-muted)">:</span>
+                <input type="number" id="dc-ingreso-m" min="0" max="59" placeholder="MM" style="width:56px;padding:6px 8px;border:1px solid var(--border-md);border-radius:6px;font-size:14px;text-align:center" oninput="updateDcBlockPreview()">
+                <select id="dc-ingreso-ampm" style="padding:6px 8px;border:1px solid var(--border-md);border-radius:6px;font-size:14px" onchange="updateDcBlockPreview()">
                   <option value="am">a.m.</option>
                   <option value="pm">p.m.</option>
                 </select>
@@ -6999,11 +6999,11 @@ function openDaycarePickupModal(dcId) {
     .map(c => `<option value="${c.id}">${c.name}</option>`).join('');
   const isBlock = dc.billing_type === 'block' || dc.billing_type === 'hourly';
   const salidaInputHtml = isBlock
-    ? `<div style="display:flex;gap:6px;align-items:center">
-        <input type="number" id="dcp-salida-h" class="form-control" min="1" max="12" style="width:64px" value="${nowH12}" oninput="updateDcPickupPreview(${dcId})">
-        <span style="font-weight:700">:</span>
-        <input type="number" id="dcp-salida-m" class="form-control" min="0" max="59" style="width:64px" value="${String(nowM).padStart(2,'0')}" oninput="updateDcPickupPreview(${dcId})">
-        <select id="dcp-salida-ampm" class="form-control" style="width:82px" onchange="updateDcPickupPreview(${dcId})">
+    ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap">
+        <input type="number" id="dcp-salida-h" min="1" max="12" style="width:56px;padding:6px 8px;border:1px solid var(--border-md);border-radius:6px;font-size:14px;text-align:center" value="${nowH12}" oninput="updateDcPickupPreview(${dcId})">
+        <span style="font-weight:700;color:var(--text-muted)">:</span>
+        <input type="number" id="dcp-salida-m" min="0" max="59" style="width:56px;padding:6px 8px;border:1px solid var(--border-md);border-radius:6px;font-size:14px;text-align:center" value="${String(nowM).padStart(2,'0')}" oninput="updateDcPickupPreview(${dcId})">
+        <select id="dcp-salida-ampm" style="padding:6px 8px;border:1px solid var(--border-md);border-radius:6px;font-size:14px" onchange="updateDcPickupPreview(${dcId})">
           <option value="am"${nowAmpm==='am'?' selected':''}>a.m.</option>
           <option value="pm"${nowAmpm==='pm'?' selected':''}>p.m.</option>
         </select>
