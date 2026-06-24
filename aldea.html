@@ -1867,7 +1867,7 @@ tr:hover td { background: var(--gray-50); }
         <input type="time" id="pickup-time" class="form-control">
       </div>
       <div class="form-group">
-        <label>Cuidadora que registra *</label>
+        <label>Cuidadora que registra</label>
         <select id="pickup-reg-ct" class="form-control"></select>
       </div>
       <div class="form-group span2">
@@ -7017,7 +7017,7 @@ function openDaycarePickupModal(dcId) {
     </div>
     <div class="form-grid">
       <div class="form-group"><label>Hora de salida real *</label>${salidaInputHtml}</div>
-      <div class="form-group"><label>Cuidadora que registra *</label><select id="dc-pickup-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
+      <div class="form-group"><label>Cuidadora que registra</label><select id="dc-pickup-reg-ct" class="form-control"><option value="">— Seleccionar —</option>${ctList}</select></div>
       <div class="form-group span2"><div id="dc-pickup-preview" style="border-radius:8px;padding:10px 14px;font-size:12px;display:none"></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px">
@@ -7035,14 +7035,6 @@ function openDaycarePickupModal(dcId) {
   }
   document.getElementById('modal-dc-pickup-inner').innerHTML = html;
   openModal('modal-dc-pickup');
-  // Auto-select assigned caretaker for today
-  const _dcAsgns = getAssignments(dcId, 'daycare');
-  const _todayStr = today();
-  const _dcActiveAsgn = _dcAsgns.find(a => (!a.from_dt || a.from_dt.slice(0,10) <= _todayStr) && (!a.to_dt || a.to_dt.slice(0,10) >= _todayStr));
-  if (_dcActiveAsgn) {
-    const _sel = document.getElementById('dc-pickup-reg-ct');
-    if (_sel) _sel.value = _dcActiveAsgn.caretaker_id;
-  }
   updateDcPickupPreview(dcId);
 }
 
@@ -7088,7 +7080,6 @@ function saveDaycarePickup(dcId) {
   const time = isBlock ? _getTimeInput('dcp-salida') : document.getElementById('dc-pickup-time')?.value;
   const regCtId = parseInt(document.getElementById('dc-pickup-reg-ct')?.value) || 0;
   if (!time) { alert('Ingresá la hora de salida.'); return; }
-  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
   if (isBlock && _hoursFromTimes(dc.hora_ingreso, time) <= 0) {
     alert('La hora de salida debe ser posterior a la hora de ingreso.'); return;
   }
@@ -7226,14 +7217,6 @@ function openPickupModal(stayId) {
   document.getElementById('pickup-notes').value = '';
   document.querySelectorAll('input[name="pickup-late"]')[0].checked = true;
   populateRegCtSelect('pickup-reg-ct');
-  // Auto-select assigned caretaker for today if there is one
-  const todayStr = today();
-  const asgns = getAssignments(stayId, 'hospedaje');
-  const activeAsgn = asgns.find(a => (!a.from_dt || a.from_dt.slice(0,10) <= todayStr) && (!a.to_dt || a.to_dt.slice(0,10) >= todayStr));
-  if (activeAsgn) {
-    const sel = document.getElementById('pickup-reg-ct');
-    if (sel) sel.value = activeAsgn.caretaker_id;
-  }
   updatePickupPreview();
   openModal('modal-pickup');
 }
@@ -7292,7 +7275,6 @@ function savePickup() {
   const late  = document.querySelector('input[name="pickup-late"]:checked')?.value === 'si';
   const notes = document.getElementById('pickup-notes').value.trim();
   const regCtId = parseInt(document.getElementById('pickup-reg-ct').value) || 0;
-  if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
   const now   = new Date().toISOString();
   const exitDate = document.getElementById('pickup-date').value;
   if (!exitDate) { alert('Ingresa la fecha real de salida.'); return; }
