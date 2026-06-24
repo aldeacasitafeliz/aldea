@@ -1586,9 +1586,8 @@ tr:hover td { background: var(--gray-50); }
     <div id="stay-reg-ct-group" style="margin-bottom:16px">
       <div class="form-group">
         <label>Cuidadora que registra *</label>
-        <select id="stay-reg-ct">
-          <option value="">— Seleccionar —</option>
-        </select>
+        <select id="stay-reg-ct"><option value="">— Cargando... —</option></select>
+        <div id="stay-reg-ct-status" style="font-size:12px;margin-top:4px;display:none"></div>
       </div>
     </div>
     <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px">
@@ -3201,7 +3200,7 @@ function clearStayForm() {
   const stayRegGroup = document.getElementById('stay-reg-ct-group');
   if (stayRegGroup) {
     stayRegGroup.style.display = editingStayId ? 'none' : '';
-    if (!editingStayId) { populateRegCtSelect('stay-reg-ct'); document.getElementById('stay-reg-ct').value = ''; }
+    if (!editingStayId) { _fillStayRegCtSelect(); }
   }
 }
 
@@ -4393,6 +4392,51 @@ function renderStayRegCtButtons(selectedId) {
     };
     container.appendChild(btn);
   });
+}
+
+async function _fillStayRegCtSelect() {
+  const sel = document.getElementById('stay-reg-ct');
+  const status = document.getElementById('stay-reg-ct-status');
+  if (!sel) return;
+
+  sel.innerHTML = '<option value="">⏳ Cargando cuidadoras...</option>';
+  sel.disabled = true;
+  if (status) { status.style.display = 'none'; }
+
+  let caretakers = [];
+
+  // 1. Intentar cargar directo de Supabase
+  if (_sb) {
+    try {
+      const { data, error } = await _sb.from('aldea_store').select('value').eq('key', 'aldea_caretakers').single();
+      if (!error && data && Array.isArray(data.value)) {
+        caretakers = data.value;
+        // Actualizar localStorage con dato fresco
+        localStorage.setItem('aldea_caretakers', JSON.stringify(caretakers));
+      }
+    } catch(e) {}
+  }
+
+  // 2. Si Supabase no devolvió nada, usar localStorage
+  if (!caretakers.length) {
+    try { caretakers = JSON.parse(localStorage.getItem('aldea_caretakers') || '[]'); } catch(e) {}
+  }
+
+  const activas = caretakers.filter(c => c.status === 'activa');
+  sel.disabled = false;
+
+  if (activas.length) {
+    sel.innerHTML = '<option value="">— Seleccionar —</option>' +
+      activas.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    if (status) status.style.display = 'none';
+  } else {
+    sel.innerHTML = '<option value="">— Seleccionar —</option>';
+    if (status) {
+      status.style.display = 'block';
+      status.style.color = 'var(--red-800)';
+      status.innerHTML = '⚠️ No se encontraron cuidadoras. Andá a <strong>Cuidadoras → ☁️ Sincronizar</strong> desde tu laptop y recargá.';
+    }
+  }
 }
 
 function populateRegCtSelect(elId) {
