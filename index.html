@@ -1242,9 +1242,14 @@ tr:hover td { background: var(--gray-50); }
         <div class="card" style="margin-bottom:16px;padding:18px">
           <div style="font-weight:600;font-size:14px;margin-bottom:6px">Respaldo completo</div>
           <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px">Descarga todos tus datos de Supabase como un archivo JSON. Guardalo en tu computadora como respaldo por si algo sale mal.</div>
-          <button class="btn btn-secondary" style="gap:8px;font-size:14px;border-color:var(--green-600);color:var(--green-600)" onclick="exportSupabaseBackup(this)">
-            ☁️ Exportar Supabase
-          </button>
+          <div style="display:flex;flex-wrap:wrap;gap:12px">
+            <button class="btn btn-secondary" style="gap:8px;font-size:14px;border-color:var(--green-600);color:var(--green-600)" onclick="exportSupabaseBackup(this)">
+              ☁️ Exportar Supabase
+            </button>
+            <button class="btn btn-secondary" style="gap:8px;font-size:14px;border-color:var(--green-600);color:var(--green-600)" onclick="exportSupabasePDF()">
+              ☁️ Exportar Supabase PDF
+            </button>
+          </div>
         </div>
 
         <div style="display:none">
@@ -11025,6 +11030,67 @@ function xlSheet(name, rows) {
 }
 function xlHeader(...labels) {
   return `<Row>${labels.map(l => `<Cell ss:StyleID="header"><Data ss:Type="String">${String(l).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</Data></Cell>`).join('')}</Row>`;
+}
+
+async function exportSupabasePDF() {
+  let backup = {};
+  if (_sb) {
+    try {
+      const { data } = await _sb.from('aldea_store').select('key, value, updated_at');
+      if (data && data.length) data.forEach(row => { backup[row.key] = row.value; });
+    } catch(e) {}
+  }
+  if (!Object.keys(backup).length) {
+    SYNC_KEYS.forEach(k => { try { backup[k] = JSON.parse(localStorage.getItem(k) || 'null'); } catch(e) {} });
+  }
+
+  const now = new Date().toLocaleString('es-PE');
+  const tbl = (headers, rows) => `<table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c??''}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+
+  const dogs = backup.aldea_dogs || [];
+  const stays = backup.aldea_stays || [];
+  const daycares = backup.aldea_daycares || [];
+  const payments = backup.aldea_payments || [];
+  const caretakers = backup.aldea_caretakers || [];
+  const incidents = backup.aldea_incidents || [];
+
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Aldea — Backup Supabase — ${now}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px;max-width:1100px;margin:0 auto}
+    h1{font-size:16px;margin-bottom:4px} h2{font-size:13px;background:#1a3a1a;color:#fff;padding:6px 12px;margin-top:24px}
+    table{width:100%;border-collapse:collapse;margin-top:8px;font-size:10px}
+    th{background:#eee;text-align:left;padding:4px 6px;border:1px solid #ccc}
+    td{padding:4px 6px;border:1px solid #ddd;vertical-align:top;word-break:break-word;max-width:200px}
+    p{font-size:11px;color:#555;margin:4px 0} @media print{body{padding:0}}
+  </style></head><body>
+  <h1>ALDEA — BACKUP SUPABASE</h1>
+  <p>Generado: <strong>${now}</strong></p>
+
+  <h2>PERROS (${dogs.length})</h2>
+  ${tbl(['ID','Nombre','Dueño','Sexo','Raza','Notas'], dogs.map(d=>[d.id,d.name,d.owner_name+' '+( d.owner_last_name||''),d.sex,d.breed,d.notes]))}
+
+  <h2>HOSPEDAJES (${stays.length})</h2>
+  ${tbl(['ID','Perro ID','Ingreso','Salida','Tarifa','Estado','Registrado por CT'], stays.map(s=>[s.id,s.dog_id,s.check_in_date,s.check_out_date||'abierto',s.daily_rate,s.status,s.registered_by_ct_id||'']))}
+
+  <h2>DAYCARES (${daycares.length})</h2>
+  ${tbl(['ID','Perro ID','Fecha','Tarifa','Hora ingreso','Hora salida','Registrado por CT'], daycares.map(d=>[d.id,d.dog_id,d.date,d.rate,d.arrival_time||'',d.departure_time||'',d.registered_by_ct_id||'']))}
+
+  <h2>PAGOS (${payments.length})</h2>
+  ${tbl(['ID','Reserva ID','Monto','Fecha','Nota'], payments.map(p=>[p.id,p.stay_id,p.amount,p.date,p.note||'']))}
+
+  <h2>CUIDADORAS (${caretakers.length})</h2>
+  ${tbl(['ID','Nombre','Estado','Email'], caretakers.map(c=>[c.id,c.name,c.status,c.email||'']))}
+
+  <h2>INCIDENCIAS (${incidents.length})</h2>
+  ${tbl(['ID','Perro ID','Fecha','Tipo','Detalle'], incidents.map(i=>[i.id,i.dog_id,i.date,i.type,i.detail||'']))}
+
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(() => w.print(), 600);
 }
 
 async function exportSupabaseBackup(btn) {
