@@ -5167,14 +5167,14 @@ function saveStay() {
     DB.saveAssignments(asgns);
   }
 
+  const isNew = !editingStayId;
+  const newStayId = isNew ? DB.stays[DB.stays.length - 1]?.id : null;
+
   closeModal('modal-stay');
   renderStaysTable();
   updateSalidasDot();
 
-  if (!editingStayId) {
-    const newStayId = DB.stays[DB.stays.length - 1]?.id;
-    if (newStayId) _openRegCtPopup(newStayId);
-  }
+  if (isNew && newStayId) _openRegCtPopup(newStayId);
 }
 
 async function _openRegCtPopup(stayId) {
