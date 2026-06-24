@@ -4313,17 +4313,21 @@ function dogInputKeydown(e) {
 function populateRegCtSelect(elId) {
   const sel = document.getElementById(elId);
   if (!sel) return;
-  const all = DB.caretakers.filter(c => c.status === 'activa');
+  let all = DB.caretakers.filter(c => c.status === 'activa');
+  // Fallback: if no 'activa' found but there are caretakers, show all (data may be stale)
+  if (!all.length) all = DB.caretakers;
   sel.innerHTML = '<option value="">— Seleccionar —</option>' +
     all.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
 }
 
 async function _ensureCaretakersLoaded(callback) {
-  if (DB.caretakers.length > 0) { callback(); return; }
   if (!_sb) { callback(); return; }
   try {
     const { data } = await _sb.from('aldea_store').select('key, value').eq('key', 'aldea_caretakers');
-    if (data && data[0]) localStorage.setItem('aldea_caretakers', JSON.stringify(data[0].value));
+    if (data && data[0]) {
+      const val = data[0].value;
+      localStorage.setItem('aldea_caretakers', Array.isArray(val) ? JSON.stringify(val) : typeof val === 'string' ? val : JSON.stringify(val));
+    }
   } catch(e) { console.warn('caretakers sync error', e); }
   callback();
 }
