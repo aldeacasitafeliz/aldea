@@ -12762,19 +12762,65 @@ function activateReserva(id) {
     return;
   }
 
-  // Idempotency guard — block double activation
+  // Idempotency guard — link or block double activation
   if (r.type === 'hospedaje') {
     const existingLinked = r.activated_stay_id && DB.stays.find(s => s.id === r.activated_stay_id);
-    const existingByDate = !existingLinked && DB.stays.find(s => s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && !s.pickup_time && s.status !== 'cancelado');
-    if (existingLinked || existingByDate) {
-      alert('⚠️ Esta reserva ya fue activada y ya tiene un registro de hospedaje asociado en ingresos. Para modificar el estado, primero pásala a Pendiente o Caída desde la pestaña Activadas.');
+    if (existingLinked) {
+      // Truly already activated — just fix status if somehow still pendiente
+      if (r.status !== 'activa') {
+        const arr2 = DB.reservas; const res2 = arr2.find(x=>x.id===id);
+        res2.status='activa'; res2.activated_at = res2.activated_at || new Date().toISOString();
+        DB.saveReservas(arr2);
+        _switchReservasTabTo('activa'); renderReservasPage(); renderStaysTable();
+        alert('✅ Reserva marcada como activada (ya tenía hospedaje vinculado).');
+      } else {
+        alert('Esta reserva ya está activada. Para cambiar el estado usá las opciones en la pestaña Activadas.');
+      }
+      return;
+    }
+    const existingByDate = DB.stays.find(s => s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && !s.pickup_time && s.status !== 'cancelado');
+    if (existingByDate) {
+      // Stay exists for same dog+date but not linked — auto-link it
+      const stays = DB.stays;
+      const sIdx = stays.findIndex(s => s.id === existingByDate.id);
+      if (sIdx >= 0 && !stays[sIdx].from_reserva_id) stays[sIdx].from_reserva_id = r.id;
+      DB.saveStays(stays);
+      const arr2 = DB.reservas; const res2 = arr2.find(x=>x.id===id);
+      res2.activated_stay_id = existingByDate.id;
+      res2.status = 'activa';
+      res2.activated_at = new Date().toISOString();
+      DB.saveReservas(arr2);
+      _switchReservasTabTo('activa'); renderReservasPage(); renderStaysTable();
+      alert('✅ Reserva activada y vinculada al hospedaje existente de ' + fmtDate(r.reserved_from) + '.');
       return;
     }
   } else {
     const existingDcLinked = r.activated_dc_id && DB.daycares.find(d => d.id === r.activated_dc_id);
-    const existingDcByDate = !existingDcLinked && DB.daycares.find(d => d.dog_id === r.dog_id && d.date === r.date);
-    if (existingDcLinked || existingDcByDate) {
-      alert('⚠️ Esta reserva ya fue activada y ya tiene un registro de daycare asociado en ingresos.');
+    if (existingDcLinked) {
+      if (r.status !== 'activa') {
+        const arr2 = DB.reservas; const res2 = arr2.find(x=>x.id===id);
+        res2.status='activa'; res2.activated_at = res2.activated_at || new Date().toISOString();
+        DB.saveReservas(arr2);
+        _switchReservasTabTo('activa'); renderReservasPage(); renderDaycareTable();
+        alert('✅ Reserva marcada como activada (ya tenía daycare vinculado).');
+      } else {
+        alert('Esta reserva ya está activada.');
+      }
+      return;
+    }
+    const existingDcByDate = DB.daycares.find(d => d.dog_id === r.dog_id && d.date === r.date);
+    if (existingDcByDate) {
+      const dcs = DB.daycares;
+      const dIdx = dcs.findIndex(d => d.id === existingDcByDate.id);
+      if (dIdx >= 0 && !dcs[dIdx].from_reserva_id) dcs[dIdx].from_reserva_id = r.id;
+      DB.saveDaycares(dcs);
+      const arr2 = DB.reservas; const res2 = arr2.find(x=>x.id===id);
+      res2.activated_dc_id = existingDcByDate.id;
+      res2.status = 'activa';
+      res2.activated_at = new Date().toISOString();
+      DB.saveReservas(arr2);
+      _switchReservasTabTo('activa'); renderReservasPage(); renderDaycareTable();
+      alert('✅ Reserva activada y vinculada al daycare existente de ' + fmtDate(r.date) + '.');
       return;
     }
   }
