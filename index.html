@@ -7602,6 +7602,33 @@ function clearSalidasHistFilter() {
 // ===================== FULL REPORT =====================
 function rTh(cols) { return `<thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead>`; }
 function rTr(cells) { return `<tr>${cells.map(c=>`<td>${c}</td>`).join('')}</tr>`; }
+
+function _calcOccMetrics(start, end) {
+  if (!start || !end || end < start) return null;
+  const days = datesInRange(start, end);
+  const holDates = new Set(DB.holidays.filter(h => h.date >= start && h.date <= end).map(h => h.date));
+  const hS={t:0,we:0,wd:0,h:0}, hC={t:0,we:0,wd:0,h:0};
+  const dS={t:0,we:0,wd:0,h:0}, dC={t:0,we:0,wd:0,h:0};
+  days.forEach(d => {
+    const dow = new Date(d+'T12:00:00').getDay();
+    const isWE = dow===0||dow===5||dow===6;
+    const isWD = dow>=1&&dow<=4;
+    const isH  = holDates.has(d);
+    const slp  = DB.stays.filter(s=>s.service_type==='hospedaje'&&s.check_in_date<=d&&s.check_out_date>d&&s.status!=='cancelado').length;
+    const dc   = DB.daycares.filter(x=>x.date===d).length;
+    hS.t+=slp; hC.t++;
+    if(isWE){hS.we+=slp;hC.we++;dS.we+=dc;dC.we++;}
+    if(isWD){hS.wd+=slp;hC.wd++;dS.wd+=dc;dC.wd++;}
+    if(isH) {hS.h+=slp; hC.h++; dS.h+=dc; dC.h++;}
+    dS.t+=dc; dC.t++;
+  });
+  const ga=(s,c)=>c?s/c:0;
+  return {
+    hasHolidays: holDates.size>0,
+    hospedaje:{ total:{avg:ga(hS.t,hC.t),cnt:hC.t}, weekend:{avg:ga(hS.we,hC.we),cnt:hC.we}, weekday:{avg:ga(hS.wd,hC.wd),cnt:hC.wd}, holiday:{avg:ga(hS.h,hC.h),cnt:hC.h} },
+    daycare:  { total:{avg:ga(dS.t,dC.t),cnt:dC.t}, weekend:{avg:ga(dS.we,dC.we),cnt:dC.we}, weekday:{avg:ga(dS.wd,dC.wd),cnt:dC.wd}, holiday:{avg:ga(dS.h,dC.h),cnt:dC.h} }
+  };
+}
 function sep(title) {
   return `<div style="margin:28px 0 14px;border-top:2px solid var(--gray-200);padding-top:14px">
     <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted)">${title}</div>
@@ -7700,6 +7727,7 @@ function renderReport() {
   const avgOcc = days.length ? dailyData.reduce((s,d)=>s+d.B.n,0)/days.length : 0;
   const maxOccPct = (maxB/20*100).toFixed(1);
   const avgOccPct = (avgOcc/20*100).toFixed(1);
+  const occMetrics = _calcOccMetrics(start, end);
 
   // Última salida
   const lastLeaving = allStays.filter(s=>s.check_out_date<=end).sort((a,b)=>b.check_out_date.localeCompare(a.check_out_date))[0];
@@ -7840,7 +7868,46 @@ function renderReport() {
     <div class="stat-card amber"><div class="stat-label">🏠 Ocupación máxima</div><div class="stat-value">${maxB}</div><div class="stat-sub">${maxOccPct}% de capacidad</div></div>
   </div>
 
-  ${sep('9) Top 10 clientes por ingresos cobrados en el período')}
+  ${sep('9) Métricas de ocupación por tipo de día')}
+  ${(()=>{
+    const m = occMetrics;
+    if(!m) return '<p class="text-muted text-sm">Sin datos de ocupación.</p>';
+    const fa=v=>v.toFixed(1);
+    const fd=(v,base)=>{const d=v-base;return(d>=0?'+':'')+d.toFixed(1);};
+    const fp=(v,base)=>{if(base===0)return'—';const p=(v-base)/base*100;return(p>=0?'+':'')+p.toFixed(1)+'%';};
+    const mainTbl=(cat)=>{
+      const {total:tot,weekend:we,weekday:wd,holiday:hol}=m[cat];
+      return reportTable(
+        ['Categoría','Promedio de perros','Días en período','Dif. vs total','Var. %'],
+        [rTr(['<strong>Total</strong>',fa(tot.avg),tot.cnt,'—','—']),
+         rTr(['Fin de semana (V/S/D)',fa(we.avg),we.cnt,fd(we.avg,tot.avg),fp(we.avg,tot.avg)]),
+         rTr(['Días de semana (L-J)',fa(wd.avg),wd.cnt,fd(wd.avg,tot.avg),fp(wd.avg,tot.avg)]),
+         m.hasHolidays?rTr(['Feriados',fa(hol.avg),hol.cnt,fd(hol.avg,tot.avg),fp(hol.avg,tot.avg)]):rTr(['Feriados','<span style="color:var(--text-muted)">—</span>',0,'—','<span style="font-size:11px;color:var(--text-muted)">Sin feriados en el período</span>'])]
+      );
+    };
+    const compTbl=(r1n,r1v,r2n,r2v,hasData,noMsg)=>{
+      if(!hasData) return `<p style="font-size:12px;color:var(--text-muted);padding:6px 0">${noMsg}</p>`;
+      return reportTable(['Categoría','Promedio de perros','Diferencia','Variación %'],
+        [rTr([r1n,fa(r1v),'—','—']),rTr([r2n,fa(r2v),fd(r2v,r1v),fp(r2v,r1v)])]);
+    };
+    const noFer='No hubo feriados dentro del período seleccionado.';
+    const catSection=(cat,title)=>{
+      const {total:tot,weekend:we,weekday:wd,holiday:hol}=m[cat];
+      return `<div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">${title}</div>
+        <div style="${blockStyle}">${mainTbl(cat)}</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">Comparativo 1: Días de semana vs Fin de semana</div>
+        <div style="${blockStyle}">${compTbl('Días de semana (L-J)',wd.avg,'Fin de semana (V/S/D)',we.avg,wd.cnt>0&&we.cnt>0,'Sin datos suficientes para comparar.')}</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">Comparativo 2: Días de semana vs Feriados</div>
+        <div style="${blockStyle}">${compTbl('Días de semana (L-J)',wd.avg,'Feriados',hol.avg,m.hasHolidays,noFer)}</div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin:10px 0 6px">Comparativo 3: Fin de semana vs Feriados</div>
+        <div style="${blockStyle}">${compTbl('Fin de semana (V/S/D)',we.avg,'Feriados',hol.avg,m.hasHolidays,noFer)}</div>`;
+    };
+    return catSection('hospedaje','Hospedaje — perros que se quedan a dormir') +
+           '<div style="margin-top:20px"></div>' +
+           catSection('daycare','Daycare');
+  })()}
+
+  ${sep('10) Top 10 clientes por ingresos cobrados en el período')}
   <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">Solo incluye pagos recibidos dentro del período. Hacé clic en un cliente para ver el desglose.</div>
   <div style="${blockStyle}">
   ${reportTable(['#','Cliente','Total cobrado'],
@@ -10355,7 +10422,9 @@ BLOQUE C — FINANZAS DEL PERÍODO
  16. Perros con deuda
 
 BLOQUE D — ANÁLISIS DEL PERÍODO
- 17. Resumen completo — ocupación, machos/hembras, tamaños, comportamientos con % y consolidados, Top 10 clientes con desglose de pagos
+ 17. Resumen completo — ocupación, machos/hembras, tamaños, comportamientos con % y consolidados
+    17.8 Métricas de ocupación por tipo de día (hospedaje y daycare): total, fin de semana, días de semana, feriados + 3 comparativos
+    17.9 Top 10 clientes con desglose de pagos
 
 BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
  18. Actividad por cuidadora — todos los tipos de información registrada en el período (hospedaje, recojo, daycare, pago, incidencia, conflicto, integración, turno alimentación, turno teléfono, asignación, nuevo perro, restaurante, reserva, medicamento) con cantidad y % por cuidadora y por tipo</div>`;
@@ -10996,6 +11065,50 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     html += kv('Día mayor ocupación', rc_maxBDay ? rc_maxBDay.date+' — '+rc_maxBDay.dayName : '—');
     html += kv('Día menor ocupación', rc_minBDay ? rc_minBDay.date+' — '+rc_minBDay.dayName : '—');
 
+    html += rc_ss('17.8 Métricas de ocupación por tipo de día');
+    html += `<p style="font-size:11px;background:#fffbe6;padding:6px 10px;border:1px solid #f0c040;margin-bottom:8px">INSTRUCCION PARA IA: Las siguientes métricas muestran la ocupación promedio desglosada por tipo de día (fin de semana, días de semana, feriados) tanto para hospedaje (perros que duermen) como para daycare. Los comparativos usan el primer grupo como base (100%). La diferencia es absoluta (en perros) y la variación es porcentual.</p>`;
+    {
+      const _m = _calcOccMetrics(from, to);
+      if (_m) {
+        const _fa = v => v.toFixed(1);
+        const _fd = (v, base) => { const d=v-base; return (d>=0?'+':'')+d.toFixed(1); };
+        const _fp = (v, base) => { if(base===0) return '—'; const p=(v-base)/base*100; return (p>=0?'+':'')+p.toFixed(1)+'%'; };
+        const _noFer = 'No hubo feriados dentro del período seleccionado.';
+        const _mainTbl = (cat, label) => {
+          const {total:tot,weekend:we,weekday:wd,holiday:hol}=_m[cat];
+          html += `<p style="font-size:11px;font-weight:700;margin:10px 0 4px">${label} — Resumen por tipo de día:</p>`;
+          html += tbl(['Categoría','Promedio de perros','Días en período','Dif. vs total','Var. %'],[
+            ['Total (promedio general)', _fa(tot.avg), tot.cnt, '—', '—'],
+            ['Fin de semana (viernes, sábado y domingo)', _fa(we.avg), we.cnt, _fd(we.avg,tot.avg), _fp(we.avg,tot.avg)],
+            ['Días de semana (lunes a jueves)', _fa(wd.avg), wd.cnt, _fd(wd.avg,tot.avg), _fp(wd.avg,tot.avg)],
+            _m.hasHolidays ? ['Feriados', _fa(hol.avg), hol.cnt, _fd(hol.avg,tot.avg), _fp(hol.avg,tot.avg)] : ['Feriados', '—', 0, '—', 'Sin feriados en el período']
+          ]);
+          html += `<p style="font-size:11px;font-weight:700;margin:10px 0 4px">${label} — Comparativo 1: Días de semana vs Fin de semana (base = días de semana):</p>`;
+          html += tbl(['Categoría','Promedio de perros','Diferencia (perros)','Variación %'],[
+            ['Días de semana (L-J)', _fa(wd.avg), '—', '—'],
+            ['Fin de semana (V/S/D)', _fa(we.avg), _fd(we.avg,wd.avg), _fp(we.avg,wd.avg)]
+          ]);
+          if (_m.hasHolidays) {
+            html += `<p style="font-size:11px;font-weight:700;margin:10px 0 4px">${label} — Comparativo 2: Días de semana vs Feriados (base = días de semana):</p>`;
+            html += tbl(['Categoría','Promedio de perros','Diferencia (perros)','Variación %'],[
+              ['Días de semana (L-J)', _fa(wd.avg), '—', '—'],
+              ['Feriados', _fa(hol.avg), _fd(hol.avg,wd.avg), _fp(hol.avg,wd.avg)]
+            ]);
+            html += `<p style="font-size:11px;font-weight:700;margin:10px 0 4px">${label} — Comparativo 3: Fin de semana vs Feriados (base = fin de semana):</p>`;
+            html += tbl(['Categoría','Promedio de perros','Diferencia (perros)','Variación %'],[
+              ['Fin de semana (V/S/D)', _fa(we.avg), '—', '—'],
+              ['Feriados', _fa(hol.avg), _fd(hol.avg,we.avg), _fp(hol.avg,we.avg)]
+            ]);
+          } else {
+            html += `<p style="font-size:11px;color:#888">${label} — ${_noFer}</p>`;
+          }
+        };
+        _mainTbl('hospedaje', 'HOSPEDAJE (perros que duermen)');
+        _mainTbl('daycare', 'DAYCARE');
+      }
+    }
+
+    html += rc_ss('17.9 Top 10 clientes por cobrado en el período');
     const rc_clientPays = {};
     DB.payments.filter(p=>p.date>=from&&p.date<=to&&p.amount>0).forEach(p=>{
       const st=DB.stays.find(s=>s.id===p.stay_id); if(!st) return;
@@ -11441,6 +11554,54 @@ function exportData(format) {
     ...(occRows.length ? occRows : [xlRow(xlCell('Seleccioná un rango de fechas específico para ver ocupación diaria'))])
   ]));
 
+  // 6b. Métricas de ocupación por tipo de día
+  {
+    const _xm = _calcOccMetrics(from !== '0000' ? from : null, to !== '9999' ? to : null);
+    const _xRows = [];
+    if (_xm) {
+      const _fa = v => v.toFixed(1);
+      const _fd = (v, base) => { const d=v-base; return (d>=0?'+':'')+d.toFixed(1); };
+      const _fp = (v, base) => { if(base===0) return '—'; const p=(v-base)/base*100; return (p>=0?'+':'')+p.toFixed(1)+'%'; };
+      const _addCat = (cat, label) => {
+        const {total:tot,weekend:we,weekday:wd,holiday:hol} = _xm[cat];
+        _xRows.push(xlRow(xlCell(label,'String')));
+        _xRows.push(xlHeader('Categoría','Promedio perros','Días en período','Dif. vs total','Var. %'));
+        _xRows.push(xlRow(xlCell('Total'), xlCell(_fa(tot.avg)), xlCell(tot.cnt,'Number'), xlCell('—'), xlCell('—')));
+        _xRows.push(xlRow(xlCell('Fin de semana (V/S/D)'), xlCell(_fa(we.avg)), xlCell(we.cnt,'Number'), xlCell(_fd(we.avg,tot.avg)), xlCell(_fp(we.avg,tot.avg))));
+        _xRows.push(xlRow(xlCell('Días de semana (L-J)'), xlCell(_fa(wd.avg)), xlCell(wd.cnt,'Number'), xlCell(_fd(wd.avg,tot.avg)), xlCell(_fp(wd.avg,tot.avg))));
+        _xRows.push(_xm.hasHolidays
+          ? xlRow(xlCell('Feriados'), xlCell(_fa(hol.avg)), xlCell(hol.cnt,'Number'), xlCell(_fd(hol.avg,tot.avg)), xlCell(_fp(hol.avg,tot.avg)))
+          : xlRow(xlCell('Feriados'), xlCell('Sin feriados en el período')));
+        _xRows.push(xlRow());
+        _xRows.push(xlRow(xlCell('Comparativo 1: Días de semana vs Fin de semana (base = días de semana)','String')));
+        _xRows.push(xlHeader('Categoría','Promedio perros','Diferencia','Var. %'));
+        _xRows.push(xlRow(xlCell('Días de semana (L-J)'), xlCell(_fa(wd.avg)), xlCell('—'), xlCell('—')));
+        _xRows.push(xlRow(xlCell('Fin de semana (V/S/D)'), xlCell(_fa(we.avg)), xlCell(_fd(we.avg,wd.avg)), xlCell(_fp(we.avg,wd.avg))));
+        _xRows.push(xlRow());
+        if (_xm.hasHolidays) {
+          _xRows.push(xlRow(xlCell('Comparativo 2: Días de semana vs Feriados (base = días de semana)','String')));
+          _xRows.push(xlHeader('Categoría','Promedio perros','Diferencia','Var. %'));
+          _xRows.push(xlRow(xlCell('Días de semana (L-J)'), xlCell(_fa(wd.avg)), xlCell('—'), xlCell('—')));
+          _xRows.push(xlRow(xlCell('Feriados'), xlCell(_fa(hol.avg)), xlCell(_fd(hol.avg,wd.avg)), xlCell(_fp(hol.avg,wd.avg))));
+          _xRows.push(xlRow());
+          _xRows.push(xlRow(xlCell('Comparativo 3: Fin de semana vs Feriados (base = fin de semana)','String')));
+          _xRows.push(xlHeader('Categoría','Promedio perros','Diferencia','Var. %'));
+          _xRows.push(xlRow(xlCell('Fin de semana (V/S/D)'), xlCell(_fa(we.avg)), xlCell('—'), xlCell('—')));
+          _xRows.push(xlRow(xlCell('Feriados'), xlCell(_fa(hol.avg)), xlCell(_fd(hol.avg,we.avg)), xlCell(_fp(hol.avg,we.avg))));
+          _xRows.push(xlRow());
+        } else {
+          _xRows.push(xlRow(xlCell('No hubo feriados dentro del período seleccionado.')));
+          _xRows.push(xlRow());
+        }
+      };
+      _addCat('hospedaje', 'HOSPEDAJE — perros que se quedan a dormir');
+      _addCat('daycare', 'DAYCARE');
+    } else {
+      _xRows.push(xlRow(xlCell('Seleccioná un rango de fechas específico para ver métricas de ocupación')));
+    }
+    sheets.push(xlSheet('Métricas de ocupación', _xRows));
+  }
+
   // 7. Cuidadoras
   sheets.push(xlSheet('Cuidadoras', [
     xlHeader('Nombre','Estado','Hospedajes asignados','Daycares asignados','De vacaciones'),
@@ -11647,6 +11808,20 @@ function exportPDF(data, fromLabel, toLabel) {
     ${data.advances.length ? tbl(['Concepto','Fecha','Perro','Monto (S/)'],
       data.advances.map(a=>[a.concepto, a.fecha, a.perro, fmtMny(a.amount)])
     ) : '<p style="color:#888;font-size:12px">Sin pagos adelantados en el período.</p>'}
+
+    ${sec(12,'Métricas de ocupación por tipo de día')}
+    ${(()=>{
+      const m = (data.from && data.from !== '0000' && data.to && data.to !== '9999') ? _calcOccMetrics(data.from, data.to) : null;
+      if (!m) return '<p style="color:#888;font-size:12px">Sin datos de ocupación.</p>';
+      const fa=v=>v.toFixed(1);
+      const fd=(v,base)=>{const d=v-base;return(d>=0?'+':'')+d.toFixed(1);};
+      const fp=(v,base)=>{if(base===0)return'—';const p=(v-base)/base*100;return(p>=0?'+':'')+p.toFixed(1)+'%';};
+      const noFer='No hubo feriados dentro del período seleccionado.';
+      const mainTbl=(cat)=>{const{total:tot,weekend:we,weekday:wd,holiday:hol}=m[cat];return tbl(['Categoría','Promedio perros','Días','Dif. vs total','Var. %'],[['Total',fa(tot.avg),tot.cnt,'—','—'],['Fin de semana (V/S/D)',fa(we.avg),we.cnt,fd(we.avg,tot.avg),fp(we.avg,tot.avg)],['Días de semana (L-J)',fa(wd.avg),wd.cnt,fd(wd.avg,tot.avg),fp(wd.avg,tot.avg)],m.hasHolidays?['Feriados',fa(hol.avg),hol.cnt,fd(hol.avg,tot.avg),fp(hol.avg,tot.avg)]:['Feriados','—',0,'—','Sin feriados']]);};
+      const compTbl=(r1n,r1v,r2n,r2v)=>tbl(['Categoría','Promedio perros','Diferencia','Var. %'],[[r1n,fa(r1v),'—','—'],[r2n,fa(r2v),fd(r2v,r1v),fp(r2v,r1v)]]);
+      const catSec=(cat,label)=>{const{weekend:we,weekday:wd,holiday:hol}=m[cat];return`<p style="font-weight:700;font-size:12px;margin:14px 0 4px">${label}</p>`+mainTbl(cat)+`<p style="font-size:11px;font-weight:600;margin:8px 0 2px">Comparativo 1: Días de semana vs Fin de semana</p>`+compTbl('Días de semana (L-J)',wd.avg,'Fin de semana (V/S/D)',we.avg)+(m.hasHolidays?`<p style="font-size:11px;font-weight:600;margin:8px 0 2px">Comparativo 2: Días de semana vs Feriados</p>`+compTbl('Días de semana (L-J)',wd.avg,'Feriados',hol.avg)+`<p style="font-size:11px;font-weight:600;margin:8px 0 2px">Comparativo 3: Fin de semana vs Feriados</p>`+compTbl('Fin de semana (V/S/D)',we.avg,'Feriados',hol.avg):`<p style="color:#888;font-size:11px;margin:6px 0">${noFer}</p>`);};
+      return catSec('hospedaje','Hospedaje (perros que se quedan a dormir)')+catSec('daycare','Daycare');
+    })()}
   </body></html>`;
 
   _downloadHTML(content, `aldea_informe_${fromLabel}_${toLabel}.html`);
