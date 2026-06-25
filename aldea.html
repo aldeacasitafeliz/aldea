@@ -8415,12 +8415,18 @@ function saveVacation() {
   if (end_dt <= start_dt) { alertEl.innerHTML = '<div class="alert alert-danger">El regreso debe ser posterior a la salida.</div>'; return; }
   const actionLabel = editingVacationId ? 'modificar vacaciones' : 'registrar vacaciones';
   if (_isDualValidationRequired(caretaker_id)) {
+    closeModal('modal-vacation');
     _dualPwValidate(caretaker_id, actionLabel,
       (validatedIds) => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, { status: 'validated', validated_by: validatedIds, requested_at: new Date().toISOString() }),
-      (validatedId, pendingId) => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, { status: 'pending', validated_by: [validatedId], pending_ct_id: pendingId, requested_at: new Date().toISOString() })
+      (validatedId, pendingId) => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, { status: 'pending', validated_by: [validatedId], pending_ct_id: pendingId, requested_at: new Date().toISOString() }),
+      () => openModal('modal-vacation')
     );
   } else {
-    promptCaretakerPassword(caretaker_id, actionLabel, () => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, null));
+    closeModal('modal-vacation');
+    promptCaretakerPassword(caretaker_id, actionLabel,
+      () => _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, null),
+      () => openModal('modal-vacation')
+    );
   }
 }
 function _doSaveVacation(caretaker_id, start_dt, end_dt, status, notes, dualValidation) {
