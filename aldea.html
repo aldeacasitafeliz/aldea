@@ -6807,14 +6807,14 @@ function openDcDebtBreakdown(dcId) {
     <div><span class="text-muted">Tipo:</span> <strong>${isHourly ? 'Por horas' : 'Por sesión'}</strong></div>
     <div><span class="text-muted">Hora ingreso:</span> <strong>${dc.hora_ingreso||'—'}</strong></div>
     <div><span class="text-muted">Hora salida:</span> <strong>${dc.departure_time||dc.hora_salida||'—'}</strong></div>
-    ${isHourly ? `<div><span class="text-muted">Horas:</span> <strong>${dc.num_hours||'?'}h</strong></div>` : ''}
+    ${isHourly ? `<div><span class="text-muted">Horas:</span> <strong>${_hoursFromTimes(dc.hora_ingreso, dc.hora_salida||dc.departure_time).toFixed(1)}h</strong></div>` : ''}
     ${owner?.phone ? `<div><span class="text-muted">Teléfono:</span> <strong>${owner.phone}</strong></div>` : ''}
   </div>`;
 
   html += `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px"><tbody>`;
   if (isHourly) {
     html += `<tr style="border-bottom:1px solid var(--border)">
-      <td style="padding:5px 8px;color:var(--text-muted)">${dc.num_hours||'?'}h × ${fmtMoney(dc.rate)}/h</td>
+      <td style="padding:5px 8px;color:var(--text-muted)">${_hoursFromTimes(dc.hora_ingreso, dc.hora_salida||dc.departure_time).toFixed(1)}h × ${fmtMoney(dc.rate)}/h</td>
       <td style="padding:5px 8px;text-align:right">${fmtMoney(base)}</td></tr>`;
   } else {
     html += `<tr style="border-bottom:1px solid var(--border)">
