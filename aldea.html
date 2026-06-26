@@ -4714,7 +4714,7 @@ function onStayDogChange() {
   if (dog.behavior_primary === 'agresivo') {
     alertEl.innerHTML += `<div class="alert alert-danger">⚠️ Perro con historial de <strong>agresividad</strong>${dog.aggression_target?' hacia '+dog.aggression_target:''}. Confirmá antes de aceptar el ingreso.</div>`;
   }
-  if (dog.incomplete) {
+  if (_isDogIncomplete(dog)) {
     alertEl.innerHTML += `<div class="alert alert-warn">⚠️ Los datos de este perro están <strong>incompletos</strong>. Completá su perfil.</div>`;
   }
 
@@ -6103,7 +6103,7 @@ function renderDashboard() {
     const dog = DB.getDog(s.dog_id);
     alerts += `<div class="alert alert-info">📦 ${dog?.name||'?'} ${dog?.owner_last_name||''} sale hoy.</div>`;
   });
-  DB.dogs.filter(d => d.incomplete).forEach(d => {
+  DB.dogs.filter(d => _isDogIncomplete(d)).forEach(d => {
     alerts += `<div class="alert alert-warn">📝 Datos incompletos: ${d.name} ${d.owner_last_name}.</div>`;
   });
   // Vacation alerts
