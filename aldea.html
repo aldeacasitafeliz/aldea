@@ -6665,7 +6665,7 @@ function renderMorosos() {
           const paid = getDcPaidAmount(d);
           const pend = getDcPendingAmount(d);
           return `<tr>
-            <td><strong>${dog?.name||'?'}</strong> <span class="badge badge-blue" style="font-size:10px">Daycare</span></td>
+            <td><strong style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted" onclick="openDcDebtBreakdown(${d.id})">${dog?.name||'?'}</strong> <span class="badge badge-blue" style="font-size:10px">Daycare</span></td>
             <td>${dog?.owner_last_name||'—'}</td>
             <td class="text-sm">${fmtDate(d.date)}</td>
             <td>${fmtMoney(total)}</td>
@@ -6778,7 +6778,76 @@ function openDebtBreakdown(stayId) {
   _debtBreakdownStayId = stayId;
   _debtBreakdownEditingHols = null;
   _renderDebtBreakdown();
+  document.getElementById('debt-btn-edit').textContent = '✏️ Editar estadía completa';
   document.getElementById('debt-btn-edit').onclick = () => { closeModal('modal-debt-breakdown'); openStayModal(stayId); };
+  openModal('modal-debt-breakdown');
+}
+
+function openDcDebtBreakdown(dcId) {
+  const dc = DB.daycares.find(d => d.id === dcId);
+  if (!dc) return;
+  const dog = DB.getDog(dc.dog_id);
+  const owner = getDogPrimaryOwner(dog);
+  const total = calcDaycareTotal(dc);
+  const base  = calcDaycareBaseTotal(dc);
+  const paid  = getDcPaidAmount(dc);
+  const pend  = getDcPendingAmount(dc);
+  const pays  = DB.payments.filter(p => p.stay_id === dcId).sort((a,b) => a.date.localeCompare(b.date));
+  const isHourly = dc.billing_type === 'block' || dc.billing_type === 'hourly';
+
+  document.getElementById('debt-modal-title').textContent = `Desglose daycare — ${dog?.name||'?'} ${dog?.owner_last_name||''}`;
+  document.getElementById('debt-btn-edit').textContent = '✏️ Editar daycare';
+  document.getElementById('debt-btn-edit').onclick = () => { closeModal('modal-debt-breakdown'); openEditDaycare(dcId); };
+
+  let html = `<div style="font-size:12px">`;
+
+  html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 16px;margin-bottom:14px;padding:10px 12px;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border)">
+    <div><span class="text-muted">Fecha:</span> <strong>${fmtDate(dc.date)}</strong></div>
+    <div><span class="text-muted">Tipo:</span> <strong>${isHourly ? 'Por horas' : 'Por sesión'}</strong></div>
+    <div><span class="text-muted">Hora ingreso:</span> <strong>${dc.hora_ingreso||'—'}</strong></div>
+    <div><span class="text-muted">Hora salida:</span> <strong>${dc.departure_time||dc.hora_salida||'—'}</strong></div>
+    ${isHourly ? `<div><span class="text-muted">Horas:</span> <strong>${dc.num_hours||'?'}h</strong></div>` : ''}
+    ${owner?.phone ? `<div><span class="text-muted">Teléfono:</span> <strong>${owner.phone}</strong></div>` : ''}
+  </div>`;
+
+  html += `<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px"><tbody>`;
+  if (isHourly) {
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;color:var(--text-muted)">${dc.num_hours||'?'}h × ${fmtMoney(dc.rate)}/h</td>
+      <td style="padding:5px 8px;text-align:right">${fmtMoney(base)}</td></tr>`;
+  } else {
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;color:var(--text-muted)">Tarifa por sesión</td>
+      <td style="padding:5px 8px;text-align:right">${fmtMoney(dc.rate)}</td></tr>`;
+  }
+  if ((dc.discount_pct||0) > 0 && dc.manual_total == null) {
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;color:var(--blue-800)">Descuento ${dc.discount_pct}%</td>
+      <td style="padding:5px 8px;text-align:right;color:var(--blue-800)">−${fmtMoney(base * dc.discount_pct / 100)}</td></tr>`;
+  }
+  if (dc.manual_total != null) {
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:5px 8px;color:var(--purple-700)">Total manual fijado</td>
+      <td style="padding:5px 8px;text-align:right;color:var(--purple-700)">${fmtMoney(parseFloat(dc.manual_total))}</td></tr>`;
+  }
+  html += `<tr style="background:var(--surface);font-weight:700;border-top:2px solid var(--border)">
+    <td style="padding:7px 8px">TOTAL DAYCARE</td>
+    <td style="padding:7px 8px;text-align:right;font-size:14px">${fmtMoney(total)}</td></tr>
+  <tr style="border-bottom:1px solid var(--border)">
+    <td style="padding:5px 8px;color:var(--green-800)">Ya pagado</td>
+    <td style="padding:5px 8px;text-align:right;color:var(--green-800);font-weight:600">${fmtMoney(paid)}</td></tr>`;
+  if ((parseFloat(dc.advance_paid)||0) > 0) {
+    html += `<tr><td style="padding:2px 8px 2px 20px;color:var(--text-muted);font-size:11px">↳ Adelanto desde reserva</td><td style="padding:2px 8px;text-align:right;font-size:11px;color:var(--green-800)">${fmtMoney(dc.advance_paid)}</td></tr>`;
+  }
+  pays.forEach(p => {
+    html += `<tr><td style="padding:2px 8px 2px 20px;color:var(--text-muted);font-size:11px">↳ ${fmtDate(p.date)}${p.note?' — '+p.note:''}</td><td style="padding:2px 8px;text-align:right;font-size:11px;color:var(--green-800)">${fmtMoney(p.amount)}</td></tr>`;
+  });
+  html += `<tr style="background:var(--red-50);font-weight:700;border-top:2px solid var(--red-200)">
+    <td style="padding:7px 8px;color:var(--red-800)">DEBE</td>
+    <td style="padding:7px 8px;text-align:right;font-size:15px;color:var(--red-800)">${fmtMoney(pend)}</td></tr>
+  </tbody></table></div>`;
+
+  document.getElementById('debt-modal-body').innerHTML = html;
   openModal('modal-debt-breakdown');
 }
 
@@ -7141,7 +7210,7 @@ function renderIncome() {
         <div style="background:var(--blue-50);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div>
             <span class="badge badge-teal" style="margin-right:6px">Daycare</span>
-            <strong style="font-size:14px">${dog?.name||'?'}</strong>
+            <strong style="font-size:14px;cursor:pointer;text-decoration:underline;text-decoration-style:dotted" onclick="openDcDebtBreakdown(${d.id})">${dog?.name||'?'}</strong>
             <span class="text-muted text-sm"> ${dog?.owner_last_name||''}</span>
           </div>
           <div style="font-size:16px;font-weight:700;color:var(--blue-800)">Debe ${fmtMoney(pend)}</div>
@@ -7330,7 +7399,7 @@ function renderIncome() {
       const paid = getDcPaidAmount(d);
       const pend = getDcPendingAmount(d);
       return `<tr>
-        <td><strong>${dog?.name||'?'}</strong></td>
+        <td><strong style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted" onclick="openDcDebtBreakdown(${d.id})">${dog?.name||'?'}</strong></td>
         <td>${dog?.owner_last_name||'—'}</td>
         <td><span class="badge badge-teal">Daycare</span></td>
         <td>${fmtMoney(total)}</td>
