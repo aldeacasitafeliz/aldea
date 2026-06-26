@@ -5117,6 +5117,69 @@ function deleteHoliday(date) {
   renderHolidaysList();
 }
 
+// ── Duplicate / overlap validation ──────────────────────────────────────────
+// newType: 'hospedaje' | 'daycare' | 'reserva_hospedaje' | 'reserva_daycare'
+// newFrom/newTo: YYYY-MM-DD strings; newTo null = open-ended
+// excludeIds: { stayId, daycareId, reservaId } — IDs to skip (being edited)
+function _dogDateConflicts(dogId, newType, newFrom, newTo, excludeIds) {
+  const FAR = '9999-12-31';
+  const conflicts = [];
+  const nIsPoint = newType === 'daycare' || newType === 'reserva_daycare';
+  const nFrom = newFrom;
+  const nTo   = newTo || FAR;
+  const excStay = excludeIds?.stayId;
+  const excDc   = excludeIds?.daycareId;
+  const excRes  = excludeIds?.reservaId;
+
+  function ov(aF, aT, aP, bF, bT, bP) {
+    if (aP && bP) return aF === bF;
+    if (aP) return bF <= aF && aF < bT;
+    if (bP) return aF <= bF && bF < aT;
+    return aF < bT && bF < aT;
+  }
+
+  DB.stays.filter(s => s.dog_id === dogId && s.status !== 'cancelado' && s.id !== excStay).forEach(s => {
+    const sTo = (s.open_ended || !s.check_out_date) ? FAR : s.check_out_date;
+    if (ov(nFrom, nTo, nIsPoint, s.check_in_date, sTo, false))
+      conflicts.push({ type: 'Hospedaje', from: s.check_in_date, to: s.open_ended ? null : s.check_out_date, status: s.status === 'activo' ? 'Activo' : s.status });
+  });
+
+  DB.daycares.filter(d => d.dog_id === dogId && d.id !== excDc).forEach(d => {
+    if (ov(nFrom, nTo, nIsPoint, d.date, d.date, true))
+      conflicts.push({ type: 'Daycare', from: d.date, to: d.date, status: 'Activo' });
+  });
+
+  // Only check pending reservas — active ones already have a linked stay/daycare in DB
+  DB.reservas.filter(r => r.dog_id === dogId && r.status === 'pendiente' && r.id !== excRes).forEach(r => {
+    if (r.type === 'hospedaje') {
+      const rTo = (r.open_ended || !r.check_out_date) ? FAR : r.check_out_date;
+      if (ov(nFrom, nTo, nIsPoint, r.reserved_from, rTo, false))
+        conflicts.push({ type: 'Reserva de hospedaje', from: r.reserved_from, to: r.check_out_date || null, status: 'Pendiente' });
+    } else {
+      if (ov(nFrom, nTo, nIsPoint, r.date, r.date, true))
+        conflicts.push({ type: 'Reserva de daycare', from: r.date, to: r.date, status: 'Pendiente' });
+    }
+  });
+
+  return conflicts;
+}
+
+function _conflictAlertHtml(conflicts) {
+  const items = conflicts.map(c => {
+    let range;
+    if (c.from === c.to || (!c.to && c.type === 'Daycare')) {
+      range = fmtDate(c.from);
+    } else if (!c.to) {
+      range = fmtDate(c.from) + ' (sin fecha de salida)';
+    } else {
+      range = fmtDate(c.from) + ' → ' + fmtDate(c.to);
+    }
+    return `<li><strong>${c.type}</strong>: ${range} — Estado: ${c.status}</li>`;
+  }).join('');
+  return `<div class="alert alert-danger">⚠️ No se puede registrar este servicio porque el perro ya tiene un registro que se superpone en ese período:<ul style="margin:6px 0 0 16px;padding:0">${items}</ul></div>`;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 function saveStay() {
   const dogId = parseInt(document.getElementById('stay-dog').value);
   const checkin = document.getElementById('stay-checkin').value;
@@ -5141,6 +5204,10 @@ function saveStay() {
     alertEl.innerHTML = '<div class="alert alert-danger">La fecha de salida debe ser posterior al ingreso.</div>';
     return;
   }
+
+  // Duplicate / overlap check
+  const _scConf = _dogDateConflicts(dogId, 'hospedaje', checkin, isOpenEnded ? null : checkout, { stayId: editingStayId });
+  if (_scConf.length) { alertEl.innerHTML = _conflictAlertHtml(_scConf); return; }
 
   // Capacity check (only when dates are known)
   if (!isOpenEnded) {
@@ -5824,6 +5891,10 @@ function saveDaycare() {
     ? { billing_type: 'block', block_rate: blockRate, block_unit: blockUnit, block_hours: blockHours || undefined, hora_ingreso: horaIngreso, rate: null }
     : { billing_type: 'daily', rate };
 
+  // Duplicate / overlap check
+  const _dcConf = _dogDateConflicts(dogId, 'daycare', date, date, { daycareId: _editDaycareId });
+  if (_dcConf.length) { alertEl.innerHTML = _conflictAlertHtml(_dcConf); return; }
+
   if (_editDaycareId) {
     // Edit existing
     const idx = dcs.findIndex(d => d.id === _editDaycareId);
@@ -5851,11 +5922,6 @@ function saveDaycare() {
     _editDaycareId = null;
   } else {
     // New
-    const existing = dcs.find(d => d.dog_id === dogId && d.date === date);
-    if (existing) {
-      alertEl.innerHTML = '<div class="alert alert-warn">Este perro ya tiene daycare registrado para esa fecha.</div>';
-      return;
-    }
     const newDcId = DB.nextId(dcs);
     const dcAdvanceVal = document.querySelector('input[name="dc-advance"]:checked')?.value;
     const dcAdvanceAmount = (dcAdvanceVal === 'si') ? (parseFloat(document.getElementById('dc-advance-amount')?.value) || 0) : 0;
@@ -12556,6 +12622,17 @@ function saveReserva() {
     alerts.innerHTML = '<div class="alert alert-danger">Seleccioná la cuidadora que registra.</div>';
     return;
   }
+  // Duplicate / overlap check
+  {
+    const _rType = isHosp ? 'reserva_hospedaje' : 'reserva_daycare';
+    const _rFrom = isHosp ? obj.reserved_from : obj.date;
+    const _rTo   = isHosp ? (obj.open_ended ? null : obj.check_out_date) : obj.date;
+    const _editRes = _editingReservaId ? DB.reservas.find(x => x.id === _editingReservaId) : null;
+    const _excStay = _editRes?.activated_stay_id || null;
+    const _rConf = _dogDateConflicts(dogId, _rType, _rFrom, _rTo, { reservaId: _editingReservaId, stayId: _excStay });
+    if (_rConf.length) { alerts.innerHTML = _conflictAlertHtml(_rConf); return; }
+  }
+
   const arr = DB.reservas;
   if (_editingReservaId) {
     const idx = arr.findIndex(x => x.id === _editingReservaId);
