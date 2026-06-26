@@ -12977,27 +12977,9 @@ function activateReserva(id) {
     res2.activated_stay_id = newStay.id;
     DB.saveReservas(arr2);
   } else {
-    const dcs = DB.daycares;
-    const dcHols = r.dc_holiday ? getHolidaysInRange(r.date, r.date) : [];
-    const newDc = { id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
-      notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
-      discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined,
-      custom_holidays: dcHols, from_reserva_id: r.id };
-    dcs.push(newDc);
-    const dcAdvPmts = r.advance_payments?.length ? r.advance_payments
-      : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
-    if (dcAdvPmts.length) {
-      const pmts = DB.payments;
-      dcAdvPmts.forEach(p => {
-        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva daycare' });
-      });
-      DB.savePayments(pmts);
-    }
-    DB.saveDaycares(dcs);
-    const arr2 = DB.reservas;
-    const res2 = arr2.find(x => x.id === id);
-    res2.activated_dc_id = newDc.id;
-    DB.saveReservas(arr2);
+    // Daycare: open hora-de-ingreso popup before creating the record
+    _openDcActivateModal(id);
+    return;
   }
   const arr = DB.reservas;
   const res = arr.find(x => x.id === id);
@@ -13006,9 +12988,78 @@ function activateReserva(id) {
   DB.saveReservas(arr);
   _switchReservasTabTo('activa');
   renderReservasPage();
-  if (r.type === 'hospedaje') renderStaysTable(); else renderDaycareTable();
-  alert('✅ Reserva activada. ' + (r.type === 'hospedaje' ? 'La estadía fue creada en Hospedaje.' : 'El registro fue creado en Daycare.'));
+  renderStaysTable();
+  alert('✅ Reserva activada. La estadía fue creada en Hospedaje.');
 }
+
+// ── Daycare-activation modal ──────────────────────────────────────────────────
+let _dcActivateReservaId = null;
+
+function _openDcActivateModal(reservaId) {
+  _dcActivateReservaId = reservaId;
+  const r = DB.reservas.find(x => x.id === reservaId);
+  const dog = r ? DB.getDog(r.dog_id) : null;
+  document.getElementById('modal-dc-activate-info').innerHTML =
+    `<strong>${dog?.name || '?'} ${dog?.owner_last_name || ''}</strong> &nbsp;·&nbsp; Daycare ${fmtDate(r?.date)}`;
+  document.getElementById('dca-h').value = '';
+  document.getElementById('dca-m').value = '';
+  document.getElementById('dca-ampm').value = 'am';
+  document.getElementById('dca-error').style.display = 'none';
+  openModal('modal-dc-activate');
+}
+
+function _dcActivateCancel() {
+  _dcActivateReservaId = null;
+  closeModal('modal-dc-activate');
+}
+
+function _dcActivateConfirm() {
+  const hora = _getTimeInput('dca');
+  const errEl = document.getElementById('dca-error');
+  if (!hora) {
+    errEl.textContent = 'Ingresá la hora de ingreso (HH:MM AM/PM).';
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  const id = _dcActivateReservaId;
+  _dcActivateReservaId = null;
+  closeModal('modal-dc-activate');
+
+  const r = DB.reservas.find(x => x.id === id);
+  if (!r) return;
+  const dcs = DB.daycares;
+  const dcHols = r.dc_holiday ? getHolidaysInRange(r.date, r.date) : [];
+  const newDc = {
+    id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
+    notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
+    discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined,
+    custom_holidays: dcHols, from_reserva_id: r.id,
+    billing_type: 'daily', hora_ingreso: hora
+  };
+  dcs.push(newDc);
+  const dcAdvPmts = r.advance_payments?.length ? r.advance_payments
+    : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
+  if (dcAdvPmts.length) {
+    const pmts = DB.payments;
+    dcAdvPmts.forEach(p => {
+      if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva daycare' });
+    });
+    DB.savePayments(pmts);
+  }
+  DB.saveDaycares(dcs);
+  const arr2 = DB.reservas;
+  const res2 = arr2.find(x => x.id === id);
+  res2.activated_dc_id = newDc.id;
+  res2.status = 'activa';
+  res2.activated_at = new Date().toISOString();
+  DB.saveReservas(arr2);
+  _switchReservasTabTo('activa');
+  renderReservasPage();
+  renderDaycareTable();
+  alert('✅ Reserva de daycare activada. Hora de ingreso: ' + hora + '.');
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 function dropReserva(id) {
   _confirmModal('¿Marcar esta reserva como caída?', () => {
@@ -13748,6 +13799,33 @@ function deleteIntegration(id) {
 </div>
 
 <!-- Modal confirmación genérico (reemplaza confirm() nativo) -->
+<!-- MODAL: Hora de ingreso para activación de reserva daycare -->
+<div class="modal-overlay" id="modal-dc-activate" style="z-index:3500">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">☀️ Activar reserva daycare</div>
+    <div id="modal-dc-activate-info" style="font-size:14px;color:var(--text-muted);margin-bottom:14px"></div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:13px;font-weight:600;display:block;margin-bottom:8px">Hora de ingreso *</label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <input type="number" id="dca-h" min="1" max="12" placeholder="HH"
+          style="width:60px;padding:8px;border:1px solid var(--border-md);border-radius:7px;font-size:16px;text-align:center">
+        <span style="font-size:18px;font-weight:700;color:var(--text-muted)">:</span>
+        <input type="number" id="dca-m" min="0" max="59" placeholder="MM"
+          style="width:60px;padding:8px;border:1px solid var(--border-md);border-radius:7px;font-size:16px;text-align:center">
+        <select id="dca-ampm" style="padding:8px 10px;border:1px solid var(--border-md);border-radius:7px;font-size:15px">
+          <option value="am">AM</option>
+          <option value="pm">PM</option>
+        </select>
+      </div>
+      <div id="dca-error" style="color:var(--red-700);font-size:12px;margin-top:6px;display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="_dcActivateCancel()">Cancelar</button>
+      <button class="btn btn-primary" onclick="_dcActivateConfirm()">Activar reserva</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-confirm" style="z-index:3000">
   <div class="modal" style="max-width:400px">
     <div class="modal-title" id="modal-confirm-title">Confirmar</div>
