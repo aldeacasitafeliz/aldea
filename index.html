@@ -6598,7 +6598,7 @@ function renderMorosos() {
     .filter(s =>
       s.service_type === 'hospedaje' &&
       s.status !== 'cancelado' &&
-      s.check_out_date < today() &&
+      s.check_out_date <= today() &&
       getPendingAmount(s) > 0
     )
     .sort((a,b) => getDaysDebt(b) - getDaysDebt(a));
