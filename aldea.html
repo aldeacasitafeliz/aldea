@@ -7285,12 +7285,18 @@ function renderIncome() {
     : '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
 
 
-  // TAB: DEUDAS
-  const debtStays = allStays
-    .filter(s => getPendingAmount(s) > 0)
+  // TAB: DEUDAS — uses global (unfiltered) lists so date filter doesn't hide real debts
+  const debtStays = allStaysGlobal
+    .filter(s => s.check_out_date <= today() && getPendingAmount(s) > 0)
     .sort((a,b) => getDaysDebt(b) - getDaysDebt(a));
-  document.getElementById('income-deudas-wrap').innerHTML = debtStays.length ? `<table>
-    <thead><tr><th>Perro</th><th>Dueño</th><th>Total</th><th>Pagado</th><th>Saldo pendiente</th><th>Fecha salida</th><th>Días deuda</th><th></th></tr></thead>
+  const debtDcs = allDcsGlobal
+    .filter(d => d.departure_time && getDcPendingAmount(d) > 0)
+    .sort((a,b) => a.date.localeCompare(b.date));
+
+  let debtHtml = '';
+  if (debtStays.length) {
+    debtHtml += `<table>
+    <thead><tr><th>Perro</th><th>Dueño</th><th>Tipo</th><th>Total</th><th>Pagado</th><th>Saldo pendiente</th><th>Fecha salida</th><th>Días deuda</th><th></th></tr></thead>
     <tbody>${debtStays.map(s => {
       const dog = DB.getDog(s.dog_id);
       const total = calcStayTotal(s);
@@ -7300,19 +7306,43 @@ function renderIncome() {
       return `<tr>
         <td><strong style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted" onclick="openDebtBreakdown(${s.id})">${dog?.name||'?'}</strong></td>
         <td>${dog?.owner_last_name||'—'}</td>
+        <td><span class="badge badge-green">Hospedaje</span></td>
         <td>${fmtMoney(total)}</td>
         <td style="color:var(--green-800)">${fmtMoney(paid)}</td>
         <td style="color:var(--red-800);font-weight:600">${fmtMoney(pending)}</td>
         <td>${fmtDate(s.check_out_date)}</td>
-        <td>${debtDays > 0 ? `<span class="badge badge-red">${debtDays}d</span>` : '<span class="badge badge-amber">activo</span>'}</td>
+        <td>${debtDays > 0 ? `<span class="badge badge-red">${debtDays}d</span>` : '<span class="badge badge-amber">hoy</span>'}</td>
         <td style="white-space:nowrap">
           <button class="btn btn-secondary btn-sm" onclick="openPaymentModal(${s.id})">💰 Pagar</button>
           <button class="btn btn-secondary btn-sm" onclick="openStayModal(${s.id})">✏️</button>
           <button class="btn btn-danger btn-sm" onclick="deleteStay(${s.id});renderIncome()">✕</button>
         </td>
       </tr>`;
-    }).join('')}</tbody></table>`
-    : '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros con deuda pendiente.</p></div>';
+    }).join('')}</tbody></table>`;
+  }
+  if (debtDcs.length) {
+    debtHtml += `${debtStays.length ? '<div style="margin-top:16px">' : ''}
+    <table>
+    <thead><tr><th>Perro</th><th>Dueño</th><th>Tipo</th><th>Total</th><th>Pagado</th><th>Saldo pendiente</th><th>Fecha</th><th></th></tr></thead>
+    <tbody>${debtDcs.map(d => {
+      const dog = DB.getDog(d.dog_id);
+      const total = calcDaycareTotal(d);
+      const paid = getDcPaidAmount(d);
+      const pend = getDcPendingAmount(d);
+      return `<tr>
+        <td><strong>${dog?.name||'?'}</strong></td>
+        <td>${dog?.owner_last_name||'—'}</td>
+        <td><span class="badge badge-teal">Daycare</span></td>
+        <td>${fmtMoney(total)}</td>
+        <td style="color:var(--green-800)">${paid > 0 ? fmtMoney(paid) : '—'}</td>
+        <td style="color:var(--red-800);font-weight:600">${fmtMoney(pend)}</td>
+        <td>${fmtDate(d.date)}</td>
+        <td><button class="btn btn-secondary btn-sm" onclick="openDcPaymentModal(${d.id})">💰 Pagar</button></td>
+      </tr>`;
+    }).join('')}</tbody></table>${debtStays.length ? '</div>' : ''}`;
+  }
+  if (!debtHtml) debtHtml = '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros con deuda pendiente.</p></div>';
+  document.getElementById('income-deudas-wrap').innerHTML = debtHtml;
 
   // Restaurant debts — append after stay debt table
   const restDebt = allRest.filter(r => !r.paid).sort((a,b) => a.date.localeCompare(b.date));
