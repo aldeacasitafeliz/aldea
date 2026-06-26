@@ -6639,7 +6639,7 @@ function renderMorosos() {
         const dias = getDaysDebt(s);
         const urgencia = dias >= 14 ? 'badge-red' : dias >= 7 ? 'badge-coral' : 'badge-amber';
         return `<tr>
-          <td><strong>${dog?.name||'?'}</strong></td>
+          <td><strong style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted" onclick="openDebtBreakdown(${s.id})">${dog?.name||'?'}</strong></td>
           <td>${dog?.owner_last_name||'—'}</td>
           <td>${fmtDate(s.check_out_date)}</td>
           <td>${fmtMoney(total)}</td>
