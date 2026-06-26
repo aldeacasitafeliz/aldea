@@ -1366,15 +1366,23 @@ tr:hover td { background: var(--gray-50); }
         <span style="font-size:13px;font-weight:500">¿El perro debe tomar medicina?</span>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text);font-weight:400"><input type="radio" name="dog-needs-med" value="no" checked onchange="toggleMedSection()"> No</label>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text);font-weight:400"><input type="radio" name="dog-needs-med" value="si" onchange="toggleMedSection()"> Sí</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--amber-800);font-weight:400"><input type="radio" name="dog-needs-med" value="no_indica" onchange="toggleMedSection()"> El dueño/a no informa</label>
       </div>
       <div id="med-section" style="display:none">
         <div id="meds-list"></div>
         <button class="btn btn-secondary btn-sm" onclick="addMedRow()" style="margin-top:8px">+ Agregar medicina</button>
       </div>
       <div id="no-med-msg" style="color:var(--text-muted);font-size:13px;padding:12px 0">Sin medicación registrada.</div>
+      <div id="no-med-indica-msg" style="display:none;color:var(--amber-800);font-size:13px;padding:10px 12px;background:var(--amber-50);border-radius:var(--radius);border:1px solid var(--amber-200)">⚠ El dueño/a no da información sobre medicamentos. Se registra como dato pendiente.</div>
     </div>
 
     <div id="dog-tab-alimentacion" class="tab-panel">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <span style="font-size:13px;font-weight:500">Información de alimentación</span>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--amber-800);font-weight:400"><input type="checkbox" id="feed-unknown" onchange="toggleFeedSection()"> El dueño/a no informa</label>
+      </div>
+      <div id="feed-unknown-msg" style="display:none;color:var(--amber-800);font-size:13px;padding:10px 12px;background:var(--amber-50);border-radius:var(--radius);border:1px solid var(--amber-200);margin-bottom:10px">⚠ El dueño/a no da información sobre alimentación. Se registra como dato pendiente.</div>
+      <div id="feed-fields-wrap">
       <div class="form-grid">
         <div class="form-group">
           <label>Tipo de comida</label>
@@ -1397,6 +1405,7 @@ tr:hover td { background: var(--gray-50); }
           <textarea id="feed-notes" placeholder="Ej: no mezclar con comida húmeda" rows="2"></textarea>
         </div>
       </div>
+      </div><!-- /feed-fields-wrap -->
     </div>
 
     <div id="dog-tab-alergias" class="tab-panel">
@@ -1404,12 +1413,14 @@ tr:hover td { background: var(--gray-50); }
         <span style="font-size:13px;font-weight:500">¿El perro tiene alguna alergia?</span>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text);font-weight:400"><input type="radio" name="dog-has-allergy" value="no" checked onchange="toggleAllergySection()"> No</label>
         <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text);font-weight:400"><input type="radio" name="dog-has-allergy" value="si" onchange="toggleAllergySection()"> Sí</label>
+        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--amber-800);font-weight:400"><input type="radio" name="dog-has-allergy" value="no_indica" onchange="toggleAllergySection()"> El dueño/a no informa</label>
       </div>
       <div id="allergy-section" style="display:none">
         <div id="allergies-list"></div>
         <button class="btn btn-secondary btn-sm" onclick="addAllergyRow()" style="margin-top:8px">+ Agregar alergia</button>
       </div>
       <div id="no-allergy-msg" style="color:var(--text-muted);font-size:13px;padding:12px 0">Sin alergias registradas.</div>
+      <div id="no-allergy-indica-msg" style="display:none;color:var(--amber-800);font-size:13px;padding:10px 12px;background:var(--amber-50);border-radius:var(--radius);border:1px solid var(--amber-200)">⚠ El dueño/a no da información sobre alergias. Se registra como dato pendiente.</div>
     </div>
 
     <div id="dog-tab-conflictos" class="tab-panel">
@@ -3028,10 +3039,11 @@ function setPrimaryOwner(idx) {
 // ---- Medications ----
 let _dogMeds = [];
 function toggleMedSection() {
-  const si = document.querySelector('input[name="dog-needs-med"]:checked').value === 'si';
-  document.getElementById('med-section').style.display = si ? 'block' : 'none';
-  document.getElementById('no-med-msg').style.display = si ? 'none' : 'block';
-  if (si && _dogMeds.length === 0) addMedRow();
+  const val = document.querySelector('input[name="dog-needs-med"]:checked').value;
+  document.getElementById('med-section').style.display = val === 'si' ? 'block' : 'none';
+  document.getElementById('no-med-msg').style.display = val === 'no' ? 'block' : 'none';
+  document.getElementById('no-med-indica-msg').style.display = val === 'no_indica' ? 'block' : 'none';
+  if (val === 'si' && _dogMeds.length === 0) addMedRow();
 }
 function parseMedTime(timeStr) {
   if (!timeStr) return { h: '', m: '00', p: 'a.m.' };
@@ -3169,14 +3181,25 @@ function setFeedingData(f) {
   document.getElementById('feed-frequency').value = f?.frequency || '';
   document.getElementById('feed-notes').value = f?.notes || '';
 }
+function toggleFeedSection() {
+  const unknown = document.getElementById('feed-unknown').checked;
+  document.getElementById('feed-fields-wrap').style.display = unknown ? 'none' : '';
+  document.getElementById('feed-unknown-msg').style.display = unknown ? 'block' : 'none';
+}
+function _resetFeedSection() {
+  document.getElementById('feed-unknown').checked = false;
+  document.getElementById('feed-fields-wrap').style.display = '';
+  document.getElementById('feed-unknown-msg').style.display = 'none';
+}
 
 // ---- Allergies ----
 let _dogAllergies = [];
 function toggleAllergySection() {
-  const si = document.querySelector('input[name="dog-has-allergy"]:checked').value === 'si';
-  document.getElementById('allergy-section').style.display = si ? 'block' : 'none';
-  document.getElementById('no-allergy-msg').style.display = si ? 'none' : 'block';
-  if (si && _dogAllergies.length === 0) addAllergyRow();
+  const val = document.querySelector('input[name="dog-has-allergy"]:checked').value;
+  document.getElementById('allergy-section').style.display = val === 'si' ? 'block' : 'none';
+  document.getElementById('no-allergy-msg').style.display = val === 'no' ? 'block' : 'none';
+  document.getElementById('no-allergy-indica-msg').style.display = val === 'no_indica' ? 'block' : 'none';
+  if (val === 'si' && _dogAllergies.length === 0) addAllergyRow();
 }
 function addAllergyRow(al) {
   _dogAllergies.push(al || { type:'', cause:'', reaction:'', management:'' });
@@ -3260,6 +3283,12 @@ function _dogMissingFields(dog) {
   if (!dog.behavior_primary) m.push('Comportamiento');
   const primary = dog.owners?.find(o => o.is_primary) || dog.owners?.[0];
   if (!primary?.phone) m.push('Teléfono del dueño/a');
+  // Feeding: incomplete if no type AND not explicitly unknown
+  if (dog.feeding_unknown) m.push('Alimentación (dueño no informa)');
+  else if (!dog.feeding?.type) m.push('Alimentación');
+  // Allergies: incomplete if not confirmed (no explicit yes/no/unknown)
+  if (dog.allergies_unknown) m.push('Alergias (dueño no informa)');
+  else if (!dog.allergies?.length && dog.has_allergy !== false) m.push('Alergias');
   return m;
 }
 function _isDogIncomplete(dog) { return _dogMissingFields(dog).length > 0; }
@@ -3317,15 +3346,21 @@ function saveDog() {
   }
   if (!owners.some(o => o.is_primary)) owners[0].is_primary = true;
 
-  const needsMed = document.querySelector('input[name="dog-needs-med"]:checked').value === 'si';
-  const hasAllergy = document.querySelector('input[name="dog-has-allergy"]:checked').value === 'si';
-  const medications = needsMed ? _dogMeds.filter(m => m.name) : [];
-  const allergies = hasAllergy ? _dogAllergies.filter(a => a.type || a.cause) : [];
-  const feeding = getFeedingData();
+  const medVal = document.querySelector('input[name="dog-needs-med"]:checked').value;
+  const allergyVal = document.querySelector('input[name="dog-has-allergy"]:checked').value;
+  const feedUnknown = document.getElementById('feed-unknown').checked;
+  const medications = medVal === 'si' ? _dogMeds.filter(m => m.name) : [];
+  const allergies = allergyVal === 'si' ? _dogAllergies.filter(a => a.type || a.cause) : [];
+  const feeding = feedUnknown ? {} : getFeedingData();
+  const meds_unknown = medVal === 'no_indica';
+  const allergies_unknown = allergyVal === 'no_indica';
+  const feeding_unknown = feedUnknown;
+  const has_allergy = allergyVal === 'no' ? false : (allergyVal === 'si' ? true : null);
+  const has_meds = medVal === 'no' ? false : (medVal === 'si' ? true : null);
 
   const primary = owners.find(o => o.is_primary) || owners[0];
   const dogs = DB.dogs;
-  const careData = { medications, feeding, allergies };
+  const careData = { medications, feeding, allergies, meds_unknown, allergies_unknown, feeding_unknown, has_allergy, has_meds };
   if (editingDogId) {
     const i = dogs.findIndex(d => d.id === editingDogId);
     dogs[i] = { ...dogs[i], name, owners, owner_last_name: primary.name, sex: sex||dogs[i].sex,
@@ -3335,7 +3370,7 @@ function saveDog() {
   } else {
     dogs.push({ id: DB.nextId(dogs), name, owners, owner_last_name: primary.name, sex, size,
       behavior_primary: behavior, aggression_target: aggression, behavior_notes: notes,
-      incomplete: _isDogIncomplete({ sex, size, behavior_primary: behavior, owners }),
+      incomplete: _isDogIncomplete({ sex, size, behavior_primary: behavior, owners, feeding, feeding_unknown, allergies, allergies_unknown, has_allergy }),
       created_at: today(), registered_by_ct_id: dogRegCt, ...careData });
   }
   DB.saveDogs(dogs);
@@ -3364,9 +3399,12 @@ function openNewDog() {
   document.querySelectorAll('input[name="dog-needs-med"]')[0].checked = true;
   document.getElementById('med-section').style.display = 'none';
   document.getElementById('no-med-msg').style.display = 'block';
+  document.getElementById('no-med-indica-msg').style.display = 'none';
   document.querySelectorAll('input[name="dog-has-allergy"]')[0].checked = true;
   document.getElementById('allergy-section').style.display = 'none';
   document.getElementById('no-allergy-msg').style.display = 'block';
+  document.getElementById('no-allergy-indica-msg').style.display = 'none';
+  _resetFeedSection();
   renderOwnersUI();
   renderMedsUI();
   renderAllergiesUI();
@@ -3394,23 +3432,51 @@ function openEditDog(id) {
 
   // Medications
   _dogMeds = (dog.medications || []).map(m => ({...m}));
-  if (_dogMeds.length > 0) {
+  document.getElementById('no-med-indica-msg').style.display = 'none';
+  if (dog.meds_unknown) {
+    document.querySelectorAll('input[name="dog-needs-med"]')[2].checked = true;
+    document.getElementById('med-section').style.display = 'none';
+    document.getElementById('no-med-msg').style.display = 'none';
+    document.getElementById('no-med-indica-msg').style.display = 'block';
+  } else if (_dogMeds.length > 0) {
     document.querySelectorAll('input[name="dog-needs-med"]')[1].checked = true;
     document.getElementById('med-section').style.display = 'block';
     document.getElementById('no-med-msg').style.display = 'none';
     renderMedsUI();
+  } else {
+    document.querySelectorAll('input[name="dog-needs-med"]')[0].checked = true;
+    document.getElementById('med-section').style.display = 'none';
+    document.getElementById('no-med-msg').style.display = 'block';
   }
 
   // Feeding
-  setFeedingData(dog.feeding || {});
+  if (dog.feeding_unknown) {
+    document.getElementById('feed-unknown').checked = true;
+    document.getElementById('feed-fields-wrap').style.display = 'none';
+    document.getElementById('feed-unknown-msg').style.display = 'block';
+    setFeedingData({});
+  } else {
+    _resetFeedSection();
+    setFeedingData(dog.feeding || {});
+  }
 
   // Allergies
   _dogAllergies = (dog.allergies || []).map(a => ({...a}));
-  if (_dogAllergies.length > 0) {
+  document.getElementById('no-allergy-indica-msg').style.display = 'none';
+  if (dog.allergies_unknown) {
+    document.querySelectorAll('input[name="dog-has-allergy"]')[2].checked = true;
+    document.getElementById('allergy-section').style.display = 'none';
+    document.getElementById('no-allergy-msg').style.display = 'none';
+    document.getElementById('no-allergy-indica-msg').style.display = 'block';
+  } else if (_dogAllergies.length > 0) {
     document.querySelectorAll('input[name="dog-has-allergy"]')[1].checked = true;
     document.getElementById('allergy-section').style.display = 'block';
     document.getElementById('no-allergy-msg').style.display = 'none';
     renderAllergiesUI();
+  } else {
+    document.querySelectorAll('input[name="dog-has-allergy"]')[0].checked = true;
+    document.getElementById('allergy-section').style.display = 'none';
+    document.getElementById('no-allergy-msg').style.display = 'block';
   }
 
   renderDogConflictsTab(id);
