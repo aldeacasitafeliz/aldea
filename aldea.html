@@ -3389,15 +3389,18 @@ function openNewDog() {
   _dogOwners = [];
   _dogMeds = [];
   _dogAllergies = [];
-  document.querySelectorAll('input[name="dog-needs-med"]')[0].checked = true;
+  // Defaults for new dogs: "el dueño/a no informa"
+  document.querySelectorAll('input[name="dog-needs-med"]')[2].checked = true;
   document.getElementById('med-section').style.display = 'none';
-  document.getElementById('no-med-msg').style.display = 'block';
-  document.getElementById('no-med-indica-msg').style.display = 'none';
-  document.querySelectorAll('input[name="dog-has-allergy"]')[0].checked = true;
+  document.getElementById('no-med-msg').style.display = 'none';
+  document.getElementById('no-med-indica-msg').style.display = 'block';
+  document.querySelectorAll('input[name="dog-has-allergy"]')[2].checked = true;
   document.getElementById('allergy-section').style.display = 'none';
-  document.getElementById('no-allergy-msg').style.display = 'block';
-  document.getElementById('no-allergy-indica-msg').style.display = 'none';
-  _resetFeedSection();
+  document.getElementById('no-allergy-msg').style.display = 'none';
+  document.getElementById('no-allergy-indica-msg').style.display = 'block';
+  document.getElementById('feed-unknown').checked = true;
+  document.getElementById('feed-fields-wrap').style.display = 'none';
+  document.getElementById('feed-unknown-msg').style.display = 'block';
   renderOwnersUI();
   renderMedsUI();
   renderAllergiesUI();
