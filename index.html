@@ -1378,12 +1378,15 @@ tr:hover td { background: var(--gray-50); }
     </div>
 
     <div id="dog-tab-alimentacion" class="tab-panel">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <span style="font-size:13px;font-weight:500">Información de alimentación</span>
-        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--amber-800);font-weight:400"><input type="checkbox" id="feed-unknown" onchange="toggleFeedSection()"> El dueño/a no informa</label>
+      <input type="checkbox" id="feed-unknown" style="display:none" onchange="toggleFeedSection()">
+      <div id="feed-unknown-msg" style="color:var(--amber-800);font-size:13px;padding:10px 12px;background:var(--amber-50);border-radius:var(--radius);border:1px solid var(--amber-200);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <span>⚠ El dueño/a no da información sobre alimentación. Se registra como dato pendiente.</span>
+        <button type="button" class="btn btn-secondary btn-sm" style="white-space:nowrap;flex-shrink:0" onclick="document.getElementById('feed-unknown').checked=false;toggleFeedSection()">Tenemos la información</button>
       </div>
-      <div id="feed-unknown-msg" style="display:none;color:var(--amber-800);font-size:13px;padding:10px 12px;background:var(--amber-50);border-radius:var(--radius);border:1px solid var(--amber-200);margin-bottom:10px">⚠ El dueño/a no da información sobre alimentación. Se registra como dato pendiente.</div>
-      <div id="feed-fields-wrap">
+      <div id="feed-fields-wrap" style="display:none">
+      <div style="margin-bottom:12px">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('feed-unknown').checked=true;toggleFeedSection()">El dueño/a no informa</button>
+      </div>
       <div class="form-grid">
         <div class="form-group">
           <label>Tipo de comida</label>
@@ -3184,12 +3187,12 @@ function setFeedingData(f) {
 }
 function toggleFeedSection() {
   const unknown = document.getElementById('feed-unknown').checked;
-  document.getElementById('feed-fields-wrap').style.display = unknown ? 'none' : '';
-  document.getElementById('feed-unknown-msg').style.display = unknown ? 'block' : 'none';
+  document.getElementById('feed-fields-wrap').style.display = unknown ? 'none' : 'block';
+  document.getElementById('feed-unknown-msg').style.display = unknown ? 'flex' : 'none';
 }
 function _resetFeedSection() {
   document.getElementById('feed-unknown').checked = false;
-  document.getElementById('feed-fields-wrap').style.display = '';
+  document.getElementById('feed-fields-wrap').style.display = 'block';
   document.getElementById('feed-unknown-msg').style.display = 'none';
 }
 
@@ -3390,17 +3393,17 @@ function openNewDog() {
   _dogMeds = [];
   _dogAllergies = [];
   // Defaults for new dogs: "el dueño/a no informa"
-  document.querySelectorAll('input[name="dog-needs-med"]')[2].checked = true;
+  document.querySelector('input[name="dog-needs-med"][value="no_indica"]').checked = true;
   document.getElementById('med-section').style.display = 'none';
   document.getElementById('no-med-msg').style.display = 'none';
   document.getElementById('no-med-indica-msg').style.display = 'block';
-  document.querySelectorAll('input[name="dog-has-allergy"]')[2].checked = true;
+  document.querySelector('input[name="dog-has-allergy"][value="no_indica"]').checked = true;
   document.getElementById('allergy-section').style.display = 'none';
   document.getElementById('no-allergy-msg').style.display = 'none';
   document.getElementById('no-allergy-indica-msg').style.display = 'block';
   document.getElementById('feed-unknown').checked = true;
   document.getElementById('feed-fields-wrap').style.display = 'none';
-  document.getElementById('feed-unknown-msg').style.display = 'block';
+  document.getElementById('feed-unknown-msg').style.display = 'flex';
   renderOwnersUI();
   renderMedsUI();
   renderAllergiesUI();
