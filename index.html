@@ -1700,7 +1700,7 @@ tr:hover td { background: var(--gray-50); }
       <div class="form-grid">
         <div class="form-group span2">
           <label>Perro *</label>
-          <select id="dc-dog">
+          <select id="dc-dog" onchange="_showDogIncAlert(this.value,'daycare-alerts')">
             <option value="">— Seleccionar perro —</option>
           </select>
         </div>
@@ -3251,6 +3251,40 @@ function clearStayForm() {
 }
 
 // ===================== DOGS =====================
+// ── Dog incomplete-data helpers ──────────────────────────────────────────────
+function _dogMissingFields(dog) {
+  if (!dog) return [];
+  const m = [];
+  if (!dog.sex) m.push('Sexo');
+  if (!dog.size) m.push('Tamaño');
+  if (!dog.behavior_primary) m.push('Comportamiento');
+  const primary = dog.owners?.find(o => o.is_primary) || dog.owners?.[0];
+  if (!primary?.phone) m.push('Teléfono del dueño/a');
+  return m;
+}
+function _isDogIncomplete(dog) { return _dogMissingFields(dog).length > 0; }
+function _dogIncBadge() {
+  return '<span class="badge badge-red" style="font-size:10px;padding:1px 5px;vertical-align:middle;margin-left:3px">⚠ Datos incompletos</span>';
+}
+function _dogNameHtml(dog) {
+  if (!dog) return '<span class="text-muted">?</span>';
+  const inc = _isDogIncomplete(dog);
+  return `<strong style="${inc?'color:var(--red-600)':''}">${dog.name}</strong>${inc?' '+_dogIncBadge():''}`;
+}
+function _showDogIncAlert(dogId, alertsElId) {
+  const el = document.getElementById(alertsElId);
+  if (!el) return;
+  const dog = DB.getDog(parseInt(dogId));
+  el.querySelector('.dog-inc-warn')?.remove();
+  if (!dog || !_isDogIncomplete(dog)) return;
+  const missing = _dogMissingFields(dog);
+  const warn = document.createElement('div');
+  warn.className = 'alert alert-warn dog-inc-warn';
+  warn.innerHTML = `⚠ <strong>Perro con datos incompletos:</strong> faltan ${missing.join(', ')}. <a href="#" onclick="openEditDog(${dog.id});return false" style="color:inherit;font-weight:600">Completar ficha →</a>`;
+  el.insertAdjacentElement('afterbegin', warn);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function saveDog() {
   const name = document.getElementById('dog-name').value.trim();
   const sex = document.getElementById('dog-sex').value;
@@ -3297,11 +3331,12 @@ function saveDog() {
     dogs[i] = { ...dogs[i], name, owners, owner_last_name: primary.name, sex: sex||dogs[i].sex,
       size: size||dogs[i].size, behavior_primary: behavior||dogs[i].behavior_primary,
       aggression_target: aggression, behavior_notes: notes, ...careData };
+    dogs[i].incomplete = _isDogIncomplete(dogs[i]);
   } else {
-    const incomplete = !sex || !size || !behavior;
     dogs.push({ id: DB.nextId(dogs), name, owners, owner_last_name: primary.name, sex, size,
       behavior_primary: behavior, aggression_target: aggression, behavior_notes: notes,
-      incomplete, created_at: today(), registered_by_ct_id: dogRegCt, ...careData });
+      incomplete: _isDogIncomplete({ sex, size, behavior_primary: behavior, owners }),
+      created_at: today(), registered_by_ct_id: dogRegCt, ...careData });
   }
   DB.saveDogs(dogs);
   const savedDogId = editingDogId || dogs[dogs.length - 1].id;
@@ -3976,7 +4011,7 @@ function renderDogsTable() {
           <button onclick="viewDog(${d.id})" style="background:none;border:none;cursor:pointer;text-align:left;padding:0;font:inherit;font-weight:700;color:${isAgg?'var(--red-800)':'var(--text)'}">
             ${d.name}
           </button>
-          ${d.incomplete?'<span class="chip" style="margin-left:5px;color:var(--amber-800);background:var(--amber-50)">incompleto</span>':''}
+          ${_isDogIncomplete(d)?`<span class="chip" style="margin-left:5px;color:var(--red-800);background:var(--red-50)" title="Faltan: ${_dogMissingFields(d).join(', ')}">⚠ Datos incompletos</span>`:''}
           ${getIncidentBadge(d.id)}
         </td>
         <td class="text-sm">${d.owner_last_name||'—'}</td>
@@ -4034,7 +4069,11 @@ function viewDog(id) {
   const activeAsgn  = currentAsgns.find(a => a.from_dt?.slice(0,10) <= today() && a.to_dt?.slice(0,10) >= today());
   const activeCt    = activeAsgn ? DB.caretakers.find(c => c.id === activeAsgn.caretaker_id) : null;
 
+  const _missingF = _dogMissingFields(d);
+  const _incBanner = _missingF.length ? `<div class="alert alert-danger" style="margin-bottom:10px">⚠ <strong>Datos incompletos:</strong> faltan ${_missingF.join(', ')}. <a href="#" onclick="closeModal('modal-dog-view');openEditDog(${d.id});return false" style="color:inherit;font-weight:600">Completar ficha →</a></div>` : '';
+
   const tabResumen = `
+    ${_incBanner}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
       <div class="report-block" style="margin:0">
         <h4>Datos generales</h4>
@@ -4330,7 +4369,7 @@ function renderDogDropdown(dogs) {
       style="padding:9px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--border);font-size:13px"
       onmousedown="selectDogSuggestion(${d.id},this.dataset.label)"
       onmouseover="highlightSuggestion(${i})">
-      <span><strong>${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name}</span></span>
+      <span><strong style="${_isDogIncomplete(d)?'color:var(--red-600)':''}">${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name}</span>${_isDogIncomplete(d)?' <span style="font-size:10px;color:var(--red-700);font-weight:600">⚠</span>':''}</span>
       <span style="display:flex;gap:6px;align-items:center">
         ${d.behavior_primary ? `<span style="font-size:11px;color:${bColor}">${d.behavior_primary}</span>` : ''}
         <span style="font-size:11px;color:var(--text-faint)">${d.size||''}</span>
@@ -4351,6 +4390,7 @@ function selectDogSuggestion(id, label) {
   document.getElementById('stay-dog').value = id;
   document.getElementById('stay-dog-input').value = label;
   document.getElementById('stay-dog-dropdown').style.display = 'none';
+  _showDogIncAlert(id, 'stay-alerts');
   onStayDogChange();
 }
 
@@ -5571,7 +5611,7 @@ function renderStaysTable() {
       const overdueLabel = isOverdue ? (overdueDays === 0 ? 'hoy' : overdueDays === 1 ? 'ayer' : `hace ${overdueDays} días`) : '';
       return `<tr${isOverdue ? ' style="background:var(--red-50,#fef2f2)"' : s.open_ended ? ' style="background:var(--amber-50)"' : ''}>
         <td>
-          <strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
+          ${_dogNameHtml(dog)} <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
           ${s.open_ended?'<span class="chip" style="background:var(--amber-100);color:var(--amber-900)">🔓 sin fecha</span>':''}
           ${isOverdue?`<span class="chip" style="background:var(--red-100,#fee2e2);color:var(--red-800,#991b1b)">⚠ Salida pendiente — debió salir ${overdueLabel}</span>`:''}
           ${s.is_exchange?'<span class="chip">canje</span>':''}${s.late_pickup?'<span class="chip">tarde</span>':''}
@@ -5964,7 +6004,7 @@ function renderDaycareTable() {
       const dog = DB.getDog(d.dog_id);
       return `<tr>
         <td>
-          <strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
+          ${_dogNameHtml(dog)} <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
           ${d.discount_pct>0?`<span class="chip" style="background:var(--amber-50);color:var(--amber-800)">-${d.discount_pct}%</span>`:''}
         </td>
         <td>${fmtDate(d.date)}</td>
@@ -6205,7 +6245,7 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
       <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:10px">
         <div style="width:28px;height:28px;border-radius:50%;background:${isOverdueCard?'var(--red-100,#fee2e2)':'var(--green-100)'};display:flex;align-items:center;justify-content:center;font-weight:700;color:${isOverdueCard?'var(--red-800,#991b1b)':'var(--green-800)'};flex-shrink:0;font-size:13px">${num}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:16px;font-weight:700;color:var(--text);line-height:1.2">${dog.name}</div>
+          <div style="font-size:16px;font-weight:700;line-height:1.2;color:${_isDogIncomplete(dog)?'var(--red-600)':'var(--text)'}">${dog.name}${_isDogIncomplete(dog)?' <span style="font-size:11px;font-weight:600;color:var(--red-700)">⚠ Datos incompletos</span>':''}</div>
           <div style="font-size:13px;color:var(--text-muted);margin-top:2px">${ownerLabel}${dog.sex?' · '+(dog.sex==='macho'?'♂':'♀'):''}${dog.size?' · '+sizeLabels[dog.size]:''}${dog.behavior_primary?' · '+(behavLabels[dog.behavior_primary]||dog.behavior_primary):''}</div>
         </div>
       </div>
@@ -6222,12 +6262,12 @@ function buildDogCard(dog, stay, serviceType, sectionCls, num, date) {
   return `<div class="dog-daily-card ${sectionCls}" onclick="viewDog(${dog.id})" style="${isOverdueCard?'background:var(--red-50,#fef2f2);border-left:3px solid var(--red-400,#f87171)':''}">
     <div class="dog-card-num">${num}</div>
     <div style="min-width:0;flex:1">
-      <div class="dog-card-name">${dog.name} <span style="font-weight:400;font-size:13px;color:var(--text-muted)">${ownerLabel}</span></div>
+      <div class="dog-card-name" style="${_isDogIncomplete(dog)?'color:var(--red-600)':''}">${dog.name}${_isDogIncomplete(dog)?' <span style="font-size:11px;font-weight:600;color:var(--red-700)">⚠</span>':''} <span style="font-weight:400;font-size:13px;color:var(--text-muted)">${ownerLabel}</span></div>
       ${isOverdueCard ? `<div style="font-size:12px;color:var(--red-700,#b91c1c);font-weight:600;margin-top:2px">⚠ Salida vencida — debió salir ${overdueTextCard} (${fmtDate(checkoutStr)})</div>` : ''}
       ${primary?.phone ? `<div class="dog-card-sub">📞 ${primary.phone}</div>` : ''}
     </div>
     <div class="dog-card-icons">
-      ${sexIcon}${sizeIcon}${behavIcon}${medIcon}${allergyIcon}${feedingIcon}${conflictIcon}${incidentIcon}${payIcon}${ctIcon}${checkoutIcon}${phoneIcon}
+      ${_isDogIncomplete(dog)?'<span class="dicon danger" title="Datos incompletos: '+_dogMissingFields(dog).join(', ')+'">📝 Incompleto</span>':''}${sexIcon}${sizeIcon}${behavIcon}${medIcon}${allergyIcon}${feedingIcon}${conflictIcon}${incidentIcon}${payIcon}${ctIcon}${checkoutIcon}${phoneIcon}
     </div>
   </div>`;
 }
@@ -7404,7 +7444,7 @@ function renderSalidasPending() {
           const dog = DB.getDog(s.dog_id);
           const waitDays = dateDiff(s.check_out_date, t);
           return `<tr${waitDays > 0 ? ' style="background:var(--amber-50)"' : ''}>
-            <td><strong>${dog?.name || '?'}</strong></td>
+            <td>${_dogNameHtml(dog)}</td>
             <td class="text-sm">${dog?.owner_last_name || '—'}</td>
             <td>${fmtDate(s.check_out_date)}${waitDays > 0 ? ` <span class="badge badge-red">${waitDays}d atraso</span>` : ''}</td>
             <td class="text-sm text-muted">${waitDays === 0 ? 'Hoy' : waitDays + ' días'}</td>
@@ -7425,7 +7465,7 @@ function renderSalidasPending() {
           const dog = DB.getDog(s.dog_id);
           const days = dateDiff(s.check_in_date, t);
           return `<tr style="background:var(--amber-50)">
-            <td><strong>${dog?.name || '?'}</strong></td>
+            <td>${_dogNameHtml(dog)}</td>
             <td class="text-sm">${dog?.owner_last_name || '—'}</td>
             <td>${fmtDate(s.check_in_date)}</td>
             <td><strong>${days}</strong> día${days !== 1 ? 's' : ''}</td>
@@ -12052,7 +12092,7 @@ function renderReservasPage() {
     return `<tr style="${isOverdue?'background:var(--red-50,#fef2f2)':''}">
       <td><span class="chip" style="background:${r.type==='hospedaje'?'var(--green-100)':'var(--blue-100)'};color:${r.type==='hospedaje'?'var(--green-800)':'var(--blue-800)'}">${r.type==='hospedaje'?'🏠 Hospedaje':'☀️ Daycare'}</span></td>
       <td>
-        <strong>${dog?.name||'?'}</strong> <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
+        ${_dogNameHtml(dog)} <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
         ${isOverdue?`<div style="font-size:11px;color:var(--red-700,#b91c1c);font-weight:600;margin-top:2px">⚠ ${overdueLabel}</div>`:''}
       </td>
       <td style="${isOverdue?'color:var(--red-700,#b91c1c);font-weight:600':''}">
@@ -12494,7 +12534,7 @@ function filterResDogSuggestions() {
   if (!filtered.length) { dd.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-muted)">Sin resultados</div>'; dd.style.display='block'; return; }
   dd.innerHTML = filtered.map((d,i) => `<div style="padding:9px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--border);font-size:13px"
     onmousedown="selectResDog(${d.id},'${d.name} ${d.owner_last_name||''}')" onmouseover="this.style.background='var(--green-50)'" onmouseout="this.style.background=''">
-    <span><strong>${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name||''}</span></span>
+    <span><strong style="${_isDogIncomplete(d)?'color:var(--red-600)':''}">${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name||''}</span>${_isDogIncomplete(d)?' <span style="font-size:10px;color:var(--red-700);font-weight:600">⚠</span>':''}</span>
     <span style="font-size:11px;color:var(--text-faint)">${d.size||''}</span>
   </div>`).join('');
   dd.style.display = 'block';
@@ -12503,6 +12543,7 @@ function selectResDog(id, label) {
   document.getElementById('res-dog').value = id;
   document.getElementById('res-dog-input').value = label;
   document.getElementById('res-dog-dropdown').style.display = 'none';
+  _showDogIncAlert(id, 'res-alerts');
 }
 function hideResDogSuggestions() { setTimeout(() => { document.getElementById('res-dog-dropdown').style.display='none'; }, 150); }
 function resDogInputKeydown(e) {
@@ -12524,7 +12565,7 @@ function filterResDcDogSuggestions() {
   if (!filtered.length) { dd.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-muted)">Sin resultados</div>'; dd.style.display='block'; return; }
   dd.innerHTML = filtered.map((d,i) => `<div style="padding:9px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-bottom:0.5px solid var(--border);font-size:13px"
     onmousedown="selectResDcDog(${d.id},'${d.name} ${d.owner_last_name||''}')" onmouseover="this.style.background='var(--green-50)'" onmouseout="this.style.background=''">
-    <span><strong>${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name||''}</span></span>
+    <span><strong style="${_isDogIncomplete(d)?'color:var(--red-600)':''}">${d.name}</strong> <span style="color:var(--text-muted)">${d.owner_last_name||''}</span>${_isDogIncomplete(d)?' <span style="font-size:10px;color:var(--red-700);font-weight:600">⚠</span>':''}</span>
     <span style="font-size:11px;color:var(--text-faint)">${d.size||''}</span>
   </div>`).join('');
   dd.style.display = 'block';
@@ -12533,6 +12574,7 @@ function selectResDcDog(id, label) {
   document.getElementById('res-dc-dog').value = id;
   document.getElementById('res-dc-dog-input').value = label;
   document.getElementById('res-dc-dog-dropdown').style.display = 'none';
+  _showDogIncAlert(id, 'res-alerts');
 }
 function hideResDcDogSuggestions() { setTimeout(() => { document.getElementById('res-dc-dog-dropdown').style.display='none'; }, 150); }
 function resDcDogInputKeydown(e) {
