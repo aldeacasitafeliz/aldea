@@ -3394,16 +3394,11 @@ function openNewDog() {
   _dogAllergies = [];
   // Defaults for new dogs: "el dueño/a no informa"
   document.querySelector('input[name="dog-needs-med"][value="no_indica"]').checked = true;
-  document.getElementById('med-section').style.display = 'none';
-  document.getElementById('no-med-msg').style.display = 'none';
-  document.getElementById('no-med-indica-msg').style.display = 'block';
+  toggleMedSection();
   document.querySelector('input[name="dog-has-allergy"][value="no_indica"]').checked = true;
-  document.getElementById('allergy-section').style.display = 'none';
-  document.getElementById('no-allergy-msg').style.display = 'none';
-  document.getElementById('no-allergy-indica-msg').style.display = 'block';
+  toggleAllergySection();
   document.getElementById('feed-unknown').checked = true;
-  document.getElementById('feed-fields-wrap').style.display = 'none';
-  document.getElementById('feed-unknown-msg').style.display = 'flex';
+  toggleFeedSection();
   renderOwnersUI();
   renderMedsUI();
   renderAllergiesUI();
