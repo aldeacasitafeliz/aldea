@@ -6722,7 +6722,93 @@ function switchIncomeTab(tab, btn) {
   document.getElementById('tab-' + tab).classList.add('active');
 }
 
-let _incomeFilter = { from: '', to: '' };
+let _incomeFilter   = { from: '', to: '' };
+let _incomeViewMode = { pendiente: 'individual', deudas: 'individual' };
+
+function toggleIncomeViewMode(tab) {
+  _incomeViewMode[tab] = _incomeViewMode[tab] === 'byDog' ? 'individual' : 'byDog';
+  renderIncome();
+}
+
+function openDogDebtModal(dogId, category) {
+  const dog   = DB.getDog(dogId);
+  const owner = getDogPrimaryOwner(dog);
+  const allStaysG = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  const allDcsG   = _reportDaycares();
+  const allRestG  = DB.restaurant;
+
+  let debts = [];
+  if (category === 'pendiente') {
+    allStaysG.filter(s => s.dog_id === dogId && getPendingAmount(s) > 0).forEach(s => {
+      debts.push({ tipo: 'Hospedaje', fecha: s.check_in_date, salida: s.open_ended ? '(abierta)' : (s.check_out_date||'—'),
+        total: calcStayTotal(s), pagado: getPaidAmount(s.id), pendiente: getPendingAmount(s),
+        dias: getDaysDebt(s), obs: s.notes||'', id: s.id, _type: 'stay' });
+    });
+    allDcsG.filter(d => d.dog_id === dogId && getDcPendingAmount(d) > 0).forEach(d => {
+      debts.push({ tipo: 'Daycare', fecha: d.date, salida: d.departure_time||'(en curso)',
+        total: calcDaycareTotal(d), pagado: getDcPaidAmount(d), pendiente: getDcPendingAmount(d),
+        dias: 0, obs: d.notes||'', id: d.id, _type: 'dc' });
+    });
+    allRestG.filter(r => r.dog_id === dogId && !r.paid).forEach(r => {
+      debts.push({ tipo: 'Restaurante', fecha: r.date, salida: '—',
+        total: r.total, pagado: 0, pendiente: r.total,
+        dias: 0, obs: r.notes||'', id: r.id, _type: 'rest' });
+    });
+  } else {
+    allStaysG.filter(s => s.dog_id === dogId && s.check_out_date <= today() && getPendingAmount(s) > 0).forEach(s => {
+      debts.push({ tipo: 'Hospedaje', fecha: s.check_in_date, salida: s.check_out_date||'—',
+        total: calcStayTotal(s), pagado: getPaidAmount(s.id), pendiente: getPendingAmount(s),
+        dias: getDaysDebt(s), obs: s.notes||'', id: s.id, _type: 'stay' });
+    });
+    allDcsG.filter(d => d.dog_id === dogId && d.departure_time && getDcPendingAmount(d) > 0).forEach(d => {
+      debts.push({ tipo: 'Daycare', fecha: d.date, salida: d.departure_time,
+        total: calcDaycareTotal(d), pagado: getDcPaidAmount(d), pendiente: getDcPendingAmount(d),
+        dias: 0, obs: d.notes||'', id: d.id, _type: 'dc' });
+    });
+  }
+
+  debts.sort((a,b) => a.fecha.localeCompare(b.fecha));
+  const totalPend = debts.reduce((s,d) => s + d.pendiente, 0);
+
+  const rows = debts.map(d => `
+    <tr>
+      <td><span class="badge ${d.tipo==='Hospedaje'?'badge-green':d.tipo==='Daycare'?'badge-teal':'badge-amber'}">${d.tipo}</span></td>
+      <td>${fmtDate(d.fecha)}</td>
+      <td>${d.salida && d.salida.length === 10 ? fmtDate(d.salida) : d.salida}</td>
+      <td>${fmtMoney(d.total)}</td>
+      <td style="color:var(--green-800)">${fmtMoney(d.pagado)}</td>
+      <td style="color:var(--red-800);font-weight:700">${fmtMoney(d.pendiente)}</td>
+      <td>${d.dias > 0 ? `<span class="badge badge-red">${d.dias}d</span>` : d.dias === 0 && d.tipo !== 'Restaurante' ? '<span class="badge badge-amber">hoy</span>' : '—'}</td>
+      <td class="text-muted text-sm">${d.obs||'—'}</td>
+    </tr>`).join('');
+
+  const body = debts.length ? `
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <strong style="font-size:15px">${dog?.name||'?'}</strong>
+      <span class="text-muted">${dog?.owner_last_name||''}</span>
+      ${owner?.phone ? `<span class="text-muted text-sm">· ${owner.phone}</span>` : ''}
+      <span class="badge badge-red" style="margin-left:auto">Deuda total: ${fmtMoney(totalPend)}</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="font-size:12px">
+        <thead><tr>
+          <th>Tipo</th><th>Ingreso</th><th>Salida</th>
+          <th>Total</th><th>Pagado</th><th>Pendiente</th><th>Mora</th><th>Observaciones</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="text-align:right;font-weight:700;font-size:13px;color:var(--red-800);
+                padding:8px 0;border-top:2px solid var(--red-200);margin-top:8px">
+      TOTAL PENDIENTE: ${fmtMoney(totalPend)}
+    </div>` : '<p class="text-muted">Sin deudas en esta categoría.</p>';
+
+  document.getElementById('debt-modal-title').textContent =
+    `${dog?.name||'?'} — ${category === 'pendiente' ? 'Pendientes de cobro' : 'Perros morosos'}`;
+  document.getElementById('debt-modal-body').innerHTML = body;
+  document.getElementById('debt-btn-edit').style.display = 'none';
+  openModal('modal-debt-breakdown');
+}
 
 function setIncomePeriod(mode) {
   const t = today();
@@ -6789,6 +6875,7 @@ function openDebtBreakdown(stayId) {
   _debtBreakdownStayId = stayId;
   _debtBreakdownEditingHols = null;
   _renderDebtBreakdown();
+  document.getElementById('debt-btn-edit').style.display = '';
   document.getElementById('debt-btn-edit').textContent = '✏️ Editar estadía completa';
   document.getElementById('debt-btn-edit').onclick = () => { closeModal('modal-debt-breakdown'); openStayModal(stayId); };
   openModal('modal-debt-breakdown');
@@ -6807,6 +6894,7 @@ function openDcDebtBreakdown(dcId) {
   const isHourly = dc.billing_type === 'block' || dc.billing_type === 'hourly';
 
   document.getElementById('debt-modal-title').textContent = `Desglose daycare — ${dog?.name||'?'} ${dog?.owner_last_name||''}`;
+  document.getElementById('debt-btn-edit').style.display = '';
   document.getElementById('debt-btn-edit').textContent = '✏️ Editar daycare';
   document.getElementById('debt-btn-edit').onclick = () => { closeModal('modal-debt-breakdown'); openEditDaycare(dcId); };
 
@@ -7101,12 +7189,18 @@ function renderIncome() {
     .reduce((sum,d) => sum + getDcPendingAmount(d), 0);
   const listoParaCobrar = totalPagado + morososPending;
 
-  const morososCount = allStaysGlobal.filter(s => s.check_out_date <= today() && getPendingAmount(s) > 0).length
-                     + allDcsGlobal.filter(d => d.departure_time && getDcPendingAmount(d) > 0).length;
-  const activoCount  = allStaysGlobal.filter(s => (s.open_ended || !s.check_out_date || s.check_out_date > today()) && getPendingAmount(s) > 0).length
-                     + allDcsGlobal.filter(d => !d.departure_time && getDcPendingAmount(d) > 0).length
-                     + new Set(allRestGlobal.filter(r => !r.paid).map(r => r.dog_id)).size;
-  const deudores = morososCount + activoCount;
+  const morososDogIds = new Set([
+    ...allStaysGlobal.filter(s => s.check_out_date <= today() && getPendingAmount(s) > 0).map(s => s.dog_id),
+    ...allDcsGlobal.filter(d => d.departure_time && getDcPendingAmount(d) > 0).map(d => d.dog_id)
+  ]);
+  const activoDogIds = new Set([
+    ...allStaysGlobal.filter(s => (s.open_ended || !s.check_out_date || s.check_out_date > today()) && getPendingAmount(s) > 0).map(s => s.dog_id),
+    ...allDcsGlobal.filter(d => !d.departure_time && getDcPendingAmount(d) > 0).map(d => d.dog_id),
+    ...allRestGlobal.filter(r => !r.paid).map(r => r.dog_id)
+  ]);
+  const morososCount = morososDogIds.size;
+  const activoCount  = activoDogIds.size;
+  const deudores     = new Set([...morososDogIds, ...activoDogIds]).size;
 
   // ── SVG icons ──────────────────────────────────────────────────────────────
   const _ic = (w,h,stroke,path) =>
@@ -7513,11 +7607,51 @@ function renderIncome() {
                       + allDcsGlobal.reduce((s,d)=>s+getDcPendingAmount(d),0);
   const potencialTotal = pendResArr.reduce((s,r)=>s+Math.max(0,calcReservaTotal(r)-_reservaAdvanceTotal(r)),0);
 
-  let pendHTML = '';
+  // ── Vista agrupada por perro — pendiente ──
+  const _buildPendGrouped = () => {
+    const dogMap = new Map();
+    const addItem = (dogId, amount, badge) => {
+      if (!dogMap.has(dogId)) dogMap.set(dogId, { amount: 0, badges: [] });
+      dogMap.get(dogId).amount += amount;
+      dogMap.get(dogId).badges.push(badge);
+    };
+    pendStays.forEach(s  => addItem(s.dog_id, getPendingAmount(s), 'Hospedaje'));
+    pendDcs.forEach(d    => addItem(d.dog_id, getDcPendingAmount(d), 'Daycare'));
+    pendRest.forEach(r   => addItem(r.dog_id, r.total, 'Restaurante'));
+    if (!dogMap.size) return '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin deudas efectivas pendientes.</p></div>';
+    const rows = [...dogMap.entries()]
+      .sort((a,b) => b[1].amount - a[1].amount)
+      .map(([dogId, data]) => {
+        const dog   = DB.getDog(dogId);
+        const owner = getDogPrimaryOwner(dog);
+        const types = [...new Set(data.badges)].map(t =>
+          `<span class="badge ${t==='Hospedaje'?'badge-green':t==='Daycare'?'badge-teal':'badge-amber'}">${t}</span>`).join(' ');
+        return `<tr>
+          <td><strong style="cursor:pointer;color:var(--primary);text-decoration:underline;text-decoration-style:dotted"
+              onclick="openDogDebtModal(${dogId},'pendiente')">${dog?.name||'?'}</strong></td>
+          <td class="text-muted">${dog?.owner_last_name||'—'}</td>
+          <td>${types}</td>
+          <td class="text-right" style="color:var(--red-800);font-weight:700">${fmtMoney(data.amount)}</td>
+          <td>${owner?.phone||'—'}</td>
+        </tr>`;
+      });
+    return `<table><thead><tr><th>Perro</th><th>Dueño/a</th><th>Tipo</th><th class="text-right">Deuda total</th><th>Teléfono</th></tr></thead>
+      <tbody>${rows.join('')}</tbody></table>`;
+  };
+
+  const pendToggleBtn = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-secondary btn-sm" onclick="toggleIncomeViewMode('pendiente')">
+      ${_incomeViewMode.pendiente === 'byDog' ? '📋 Ver por deuda' : '👤 Ver por perro'}
+    </button>
+  </div>`;
+
+  let pendHTML = pendToggleBtn;
 
   // ── EFECTIVOS ──
   pendHTML += secHeader('Pendientes de cobro efectivos', efectivoTotal, 'var(--red-50)');
-  if (pendItems.length) {
+  if (_incomeViewMode.pendiente === 'byDog') {
+    pendHTML += _buildPendGrouped();
+  } else if (pendItems.length) {
     pendHTML += pendItems.join('');
   } else {
     pendHTML += '<div class="empty-state" style="margin-bottom:16px"><div class="empty-icon">✅</div><p>Sin deudas efectivas pendientes.</p></div>';
@@ -7660,14 +7794,63 @@ function renderIncome() {
   const debtRestTotal = allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0);
   const debtRestCount = allRestGlobal.filter(r => !r.paid).length;
   const maxDebtDays = debtStays.length ? getDaysDebt(debtStays[0]) : 0;
+  const debtMorososDogIds = new Set([
+    ...debtStays.map(s => s.dog_id),
+    ...debtDcs.map(d => d.dog_id)
+  ]);
   const debtCards = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px">
-    <div class="stat-card coral"><div class="stat-label">Perros morosos</div><div class="stat-value">${debtStays.length + debtDcs.length}</div></div>
+    <div class="stat-card coral"><div class="stat-label">Perros morosos</div><div class="stat-value">${debtMorososDogIds.size}</div></div>
     <div class="stat-card red" style="background:var(--red-50)"><div class="stat-label">Deuda total</div><div class="stat-value" style="color:var(--red-800)">${fmtMoney(debtTotal)}</div></div>
     <div class="stat-card amber"><div class="stat-label">Mayor atraso</div><div class="stat-value">${maxDebtDays}</div><div class="stat-sub">días</div></div>
     ${debtRestCount ? `<div class="stat-card amber"><div class="stat-label">🍽️ Rest. pendiente</div><div class="stat-value" style="color:var(--amber-800)">${fmtMoney(debtRestTotal)}</div><div class="stat-sub">${debtRestCount} consumo(s)</div></div>` : ''}
   </div>`;
-  if (!debtHtml) debtHtml = '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros morosos.</p></div>';
-  document.getElementById('income-deudas-wrap').innerHTML = debtCards + debtHtml;
+  // ── Vista agrupada por perro — morosos ──
+  const _buildDeudaGrouped = () => {
+    const dogMap = new Map();
+    debtStays.forEach(s => {
+      if (!dogMap.has(s.dog_id)) dogMap.set(s.dog_id, { amount: 0, maxDays: 0, badges: [] });
+      const e = dogMap.get(s.dog_id);
+      e.amount += getPendingAmount(s);
+      e.maxDays = Math.max(e.maxDays, getDaysDebt(s));
+      e.badges.push('Hospedaje');
+    });
+    debtDcs.forEach(d => {
+      if (!dogMap.has(d.dog_id)) dogMap.set(d.dog_id, { amount: 0, maxDays: 0, badges: [] });
+      const e = dogMap.get(d.dog_id);
+      e.amount += getDcPendingAmount(d);
+      e.badges.push('Daycare');
+    });
+    if (!dogMap.size) return '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros morosos.</p></div>';
+    const rows = [...dogMap.entries()]
+      .sort((a,b) => b[1].maxDays - a[1].maxDays)
+      .map(([dogId, data]) => {
+        const dog   = DB.getDog(dogId);
+        const types = [...new Set(data.badges)].map(t =>
+          `<span class="badge ${t==='Hospedaje'?'badge-green':'badge-teal'}">${t}</span>`).join(' ');
+        return `<tr>
+          <td><strong style="cursor:pointer;color:var(--primary);text-decoration:underline;text-decoration-style:dotted"
+              onclick="openDogDebtModal(${dogId},'morosos')">${dog?.name||'?'}</strong></td>
+          <td class="text-muted">${dog?.owner_last_name||'—'}</td>
+          <td>${types}</td>
+          <td class="text-right" style="color:var(--red-800);font-weight:700">${fmtMoney(data.amount)}</td>
+          <td>${data.maxDays > 0 ? `<span class="badge badge-red">${data.maxDays}d</span>` : '<span class="badge badge-amber">hoy</span>'}</td>
+        </tr>`;
+      });
+    return `<table><thead><tr><th>Perro</th><th>Dueño/a</th><th>Tipo</th><th class="text-right">Deuda total</th><th>Mora máx.</th></tr></thead>
+      <tbody>${rows.join('')}</tbody></table>`;
+  };
+
+  const deudaToggleBtn = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-secondary btn-sm" onclick="toggleIncomeViewMode('deudas')">
+      ${_incomeViewMode.deudas === 'byDog' ? '📋 Ver por deuda' : '👤 Ver por perro'}
+    </button>
+  </div>`;
+
+  const deudaContent = _incomeViewMode.deudas === 'byDog'
+    ? _buildDeudaGrouped()
+    : (debtHtml || '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros morosos.</p></div>');
+
+  document.getElementById('income-deudas-wrap').innerHTML = deudaToggleBtn + debtCards + deudaContent;
 
   // Restaurant debts — append after stay debt table
   const restDebt = allRest.filter(r => !r.paid).sort((a,b) => a.date.localeCompare(b.date));
