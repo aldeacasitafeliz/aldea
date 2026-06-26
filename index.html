@@ -3278,17 +3278,9 @@ function clearStayForm() {
 function _dogMissingFields(dog) {
   if (!dog) return [];
   const m = [];
-  if (!dog.sex) m.push('Sexo');
-  if (!dog.size) m.push('Tamaño');
-  if (!dog.behavior_primary) m.push('Comportamiento');
-  const primary = dog.owners?.find(o => o.is_primary) || dog.owners?.[0];
-  if (!primary?.phone) m.push('Teléfono del dueño/a');
-  // Feeding: incomplete if no type AND not explicitly unknown
-  if (dog.feeding_unknown) m.push('Alimentación (dueño no informa)');
-  else if (!dog.feeding?.type) m.push('Alimentación');
-  // Allergies: incomplete if not confirmed (no explicit yes/no/unknown)
-  if (dog.allergies_unknown) m.push('Alergias (dueño no informa)');
-  else if (!dog.allergies?.length && dog.has_allergy !== false) m.push('Alergias');
+  if (dog.feeding_unknown) m.push('Alimentación');
+  if (dog.allergies_unknown) m.push('Alergias');
+  if (dog.meds_unknown) m.push('Medicamentos');
   return m;
 }
 function _isDogIncomplete(dog) { return _dogMissingFields(dog).length > 0; }
