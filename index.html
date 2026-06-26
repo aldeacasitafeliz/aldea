@@ -6545,18 +6545,23 @@ function renderMorosos() {
     )
     .sort((a,b) => getDaysDebt(b) - getDaysDebt(a));
 
+  const dcMorosos = DB.daycares
+    .filter(d => d.departure_time && getDcPendingAmount(d) > 0)
+    .sort((a,b) => a.date.localeCompare(b.date));
+
   const restDebt = DB.restaurant.filter(r => !r.paid);
   const totalDeuda = morosos.reduce((sum,s) => sum + getPendingAmount(s), 0)
+                   + dcMorosos.reduce((sum,d) => sum + getDcPendingAmount(d), 0)
                    + restDebt.reduce((sum,r) => sum + r.total, 0);
   const maxDias = morosos.length ? getDaysDebt(morosos[0]) : 0;
 
   document.getElementById('morosos-stats').innerHTML = `
-    <div class="stat-card coral"><div class="stat-label">Perros morosos</div><div class="stat-value">${morosos.length}</div></div>
+    <div class="stat-card coral"><div class="stat-label">Perros morosos</div><div class="stat-value">${morosos.length + dcMorosos.length}</div></div>
     <div class="stat-card red" style="background:var(--red-50)"><div class="stat-label">Deuda total</div><div class="stat-value" style="color:var(--red-800)">${fmtMoney(totalDeuda)}</div></div>
     <div class="stat-card amber"><div class="stat-label">Mayor atraso</div><div class="stat-value">${maxDias}</div><div class="stat-sub">días</div></div>
     ${restDebt.length ? `<div class="stat-card amber"><div class="stat-label">🍽️ Rest. pendiente</div><div class="stat-value" style="color:var(--amber-800)">${fmtMoney(restDebt.reduce((s,r)=>s+r.total,0))}</div><div class="stat-sub">${restDebt.length} consumo(s)</div></div>` : ''}`;
 
-  if (!morosos.length) {
+  if (!morosos.length && !dcMorosos.length) {
     document.getElementById('morosos-table-wrap').innerHTML =
       '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros morosos. Todos al día.</p></div>';
     return;
@@ -6589,6 +6594,31 @@ function renderMorosos() {
       </tbody></table>`;
   } else {
     morososHtml = '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros morosos. Todos al día.</p></div>';
+  }
+
+  if (dcMorosos.length) {
+    morososHtml += `<div style="margin-top:16px">
+      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">☀️ Daycare — pendiente de cobro</div>
+      <table>
+        <thead><tr><th>Perro</th><th>Dueño</th><th>Fecha</th><th>Total</th><th>Pagado</th><th>Deuda</th><th></th></tr></thead>
+        <tbody>${dcMorosos.map(d => {
+          const dog = DB.getDog(d.dog_id);
+          const total = calcDaycareTotal(d);
+          const paid = getDcPaidAmount(d);
+          const pend = getDcPendingAmount(d);
+          return `<tr>
+            <td><strong>${dog?.name||'?'}</strong> <span class="badge badge-blue" style="font-size:10px">Daycare</span></td>
+            <td>${dog?.owner_last_name||'—'}</td>
+            <td class="text-sm">${fmtDate(d.date)}</td>
+            <td>${fmtMoney(total)}</td>
+            <td style="color:var(--green-800)">${paid > 0 ? fmtMoney(paid) : '—'}</td>
+            <td style="color:var(--red-800);font-weight:700">${fmtMoney(pend)}</td>
+            <td><button class="btn btn-secondary btn-sm" onclick="openDcPaymentModal(${d.id})">💰 Registrar pago</button></td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>
+    </div>`;
   }
 
   if (restDebt.length) {
@@ -11071,7 +11101,7 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     // 15.4 Cobrado en el período
     const cobradoRows = [
       ...DB.payments.filter(p=>iStays.some(s=>s.id===p.stay_id)).sort((a,b)=>a.date.localeCompare(b.date)).map(p=>{ const st=DB.stays.find(s=>s.id===p.stay_id); const dog=st?DB.getDog(st.dog_id):null; return { date:p.date, perro:dog?.name||'?', dueno:dog?.owner_last_name||'—', tipo:'Hospedaje', nota:p.note||'', amount:parseFloat(p.amount), fueraPeriodo:!inRangeI(p.date) }; }),
-      ...iDcs.sort((a,b)=>a.date.localeCompare(b.date)).map(d=>{ const dog=DB.getDog(d.dog_id); return { date:d.date, perro:dog?.name||'?', dueno:dog?.owner_last_name||'—', tipo:'Daycare', nota:d.notes||'', amount:calcDaycareTotal(d), fueraPeriodo:false }; }),
+      ...iDcs.filter(d=>getDcPaidAmount(d)>0).sort((a,b)=>a.date.localeCompare(b.date)).map(d=>{ const dog=DB.getDog(d.dog_id); return { date:d.date, perro:dog?.name||'?', dueno:dog?.owner_last_name||'—', tipo:'Daycare', nota:d.notes||'', amount:getDcPaidAmount(d), fueraPeriodo:false }; }),
       ...iRest.filter(r=>r.paid).sort((a,b)=>a.date.localeCompare(b.date)).map(r=>{ const dog=DB.getDog(r.dog_id); return { date:r.paid_date||r.date, perro:dog?.name||'?', dueno:dog?.owner_last_name||'—', tipo:'Restaurante', nota:r.meals+' comida(s)', amount:r.total, fueraPeriodo:false }; })
     ].sort((a,b)=>a.date.localeCompare(b.date));
     html += ss(`15.4 Cobrado en el período (${cobradoRows.length} registros)`);
@@ -12716,6 +12746,11 @@ function calcReservaTotal(r) {
 }
 
 function _reservaAdvanceTotal(r) {
+  if (!r) return 0;
+  // If payments were already migrated (floating: from_reserva_id set, stay_id null), use those
+  const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+  if (floating.length) return floating.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+  // Otherwise fall back to reserva's own advance data
   if (r.advance_payments?.length) return r.advance_payments.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
   return parseFloat(r.advance_amount) || 0;
 }
@@ -12746,14 +12781,16 @@ function setReservaStatus(id, newStatus) {
   }
   _confirmModal(confirmMsg, () => {
   if (wasActive && r.type === 'hospedaje') {
-    // Delete ALL stays linked to this reserva: by stored ID, by from_reserva_id, or by dog+date (pre-fix data)
     const toDeleteIds = new Set(
       DB.stays
         .filter(s => s.id === linkedStayId || s.from_reserva_id === r.id || (s.dog_id === r.dog_id && s.check_in_date === r.reserved_from && !s.pickup_time))
         .map(s => s.id)
     );
     DB.saveStays(DB.stays.filter(s => !toDeleteIds.has(s.id)));
-    DB.savePayments(DB.payments.filter(p => !toDeleteIds.has(p.stay_id)));
+    // Reserva-advance payments: float back (stay_id=null) instead of deleting
+    const pmts = DB.payments;
+    pmts.filter(p => toDeleteIds.has(p.stay_id) && p.from_reserva_id === r.id).forEach(p => { p.stay_id = null; });
+    DB.savePayments(pmts.filter(p => !toDeleteIds.has(p.stay_id) || p.from_reserva_id === r.id));
     delete r.activated_stay_id;
   }
   if (wasActive && r.type === 'daycare') {
@@ -12763,7 +12800,9 @@ function setReservaStatus(id, newStatus) {
         .map(d => d.id)
     );
     DB.saveDaycares(DB.daycares.filter(d => !dcToDeleteIds.has(d.id)));
-    DB.savePayments(DB.payments.filter(p => !dcToDeleteIds.has(p.stay_id)));
+    const pmtsDc = DB.payments;
+    pmtsDc.filter(p => dcToDeleteIds.has(p.stay_id) && p.from_reserva_id === r.id).forEach(p => { p.stay_id = null; });
+    DB.savePayments(pmtsDc.filter(p => !dcToDeleteIds.has(p.stay_id) || p.from_reserva_id === r.id));
     delete r.activated_dc_id;
   }
   r.status = newStatus;
@@ -12961,13 +13000,19 @@ function activateReserva(id) {
       from_reserva_id: r.id
     };
     stays.push(newStay);
+    // Advance payments: re-link floating ones or create once (never duplicate)
     const advPmts = r.advance_payments?.length ? r.advance_payments
       : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
     if (advPmts.length) {
       const pmts = DB.payments;
-      advPmts.forEach(p => {
-        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva' });
-      });
+      const floating = pmts.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+      if (floating.length) {
+        floating.forEach(p => { p.stay_id = newStay.id; });
+      } else {
+        advPmts.forEach(p => {
+          if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva', from_reserva_id: r.id });
+        });
+      }
       DB.savePayments(pmts);
     }
     DB.saveStays(stays);
@@ -13032,7 +13077,7 @@ function _dcActivateConfirm() {
   const dcHols = r.dc_holiday ? getHolidaysInRange(r.date, r.date) : [];
   const newDc = {
     id: DB.nextId(dcs), dog_id: r.dog_id, date: r.date, rate: r.rate,
-    notes: r.notes, advance_paid: !!(r.advance_payments?.length || r.advance_amount),
+    notes: r.notes, advance_paid: 0,
     discount_pct: r.discount_pct || 0, manual_total: r.manual_total || undefined,
     custom_holidays: dcHols, from_reserva_id: r.id,
     billing_type: 'daily', hora_ingreso: hora
@@ -13042,9 +13087,14 @@ function _dcActivateConfirm() {
     : (r.advance_amount ? [{ amount: r.advance_amount, date: today() }] : []);
   if (dcAdvPmts.length) {
     const pmts = DB.payments;
-    dcAdvPmts.forEach(p => {
-      if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva daycare' });
-    });
+    const floating = pmts.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+    if (floating.length) {
+      floating.forEach(p => { p.stay_id = newDc.id; });
+    } else {
+      dcAdvPmts.forEach(p => {
+        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: p.amount, date: p.date || today(), notes: 'Adelanto desde reserva daycare', from_reserva_id: r.id });
+      });
+    }
     DB.savePayments(pmts);
   }
   DB.saveDaycares(dcs);
