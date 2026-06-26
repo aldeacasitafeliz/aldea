@@ -7259,7 +7259,7 @@ function updateReservasDot() {
 }
 
 function openDaycarePickupModal(dcId) {
-  _ensureCaretakersLoaded(() => _openDaycarePickupModal(dcId));
+  _openDaycarePickupModal(dcId);
 }
 function _openDaycarePickupModal(dcId) {
   const dc = DB.daycares.find(d => d.id === dcId);
@@ -7369,6 +7369,9 @@ function saveDaycarePickup(dcId) {
   DB.saveDaycares(dcs);
   closeModal('modal-dc-pickup');
   renderSalidasPage();
+  renderDashboard();
+  renderDaily();
+  renderMorosos();
   renderIncome();
 }
 
@@ -7464,7 +7467,7 @@ function renderSalidasPending() {
 }
 
 function openPickupModal(stayId) {
-  _ensureCaretakersLoaded(() => _openPickupModal(stayId));
+  _openPickupModal(stayId);
 }
 function _openPickupModal(stayId) {
   _pickupStayId = stayId;
@@ -7565,11 +7568,9 @@ function savePickup() {
   const isOpen = !!stay.open_ended;
   const dateChanged = !isOpen && exitDate !== stay.check_out_date;
 
-  let extra = {};
-  if (isOpen || dateChanged) {
-    const { total: finalTotal } = _calcPickupTotal(stay, exitDate, late);
-    extra = { check_out_date: exitDate, open_ended: false, status: 'finalizado', manual_total: finalTotal };
-  }
+  // Always recalc total and mark finalizado on checkout
+  const { total: finalTotal } = _calcPickupTotal(stay, exitDate, late);
+  const extra = { check_out_date: exitDate, open_ended: false, status: 'finalizado', manual_total: finalTotal };
 
   stays[idx] = {
     ...stays[idx],
@@ -7584,6 +7585,9 @@ function savePickup() {
 
   closeModal('modal-pickup');
   renderSalidasPage();
+  renderDashboard();
+  renderDaily();
+  renderMorosos();
   const staysPage = document.getElementById('page-stays');
   if (staysPage?.classList.contains('active')) renderStaysTable();
 }
