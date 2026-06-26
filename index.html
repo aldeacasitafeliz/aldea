@@ -977,7 +977,7 @@ tr:hover td { background: var(--gray-50); }
       <div class="tabs">
         <button class="tab-btn active" id="income-tab-btn-pendiente" onclick="switchIncomeTab('pendiente',this)">Pendiente de cobro</button>
         <button class="tab-btn" id="income-tab-btn-cobrado" onclick="switchIncomeTab('cobrado',this)">Cobrado</button>
-        <button class="tab-btn" id="income-tab-btn-deudas" onclick="switchIncomeTab('deudas',this)">Perros con deuda</button>
+        <button class="tab-btn" id="income-tab-btn-deudas" onclick="switchIncomeTab('deudas',this)">Perros morosos</button>
       </div>
       <div id="tab-pendiente" class="tab-panel active"><div class="card" style="padding:0;overflow:hidden"><div id="income-pendiente-wrap"></div></div></div>
       <div id="tab-cobrado" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-cobrado-wrap"></div></div></div>
@@ -7410,8 +7410,19 @@ function renderIncome() {
       </tr>`;
     }).join('')}</tbody></table>${debtStays.length ? '</div>' : ''}`;
   }
-  if (!debtHtml) debtHtml = '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros con deuda pendiente.</p></div>';
-  document.getElementById('income-deudas-wrap').innerHTML = debtHtml;
+  const debtTotal = debtStays.reduce((s,x) => s + getPendingAmount(x), 0)
+                  + debtDcs.reduce((s,d) => s + getDcPendingAmount(d), 0);
+  const debtRestTotal = allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0);
+  const debtRestCount = allRestGlobal.filter(r => !r.paid).length;
+  const maxDebtDays = debtStays.length ? getDaysDebt(debtStays[0]) : 0;
+  const debtCards = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:16px">
+    <div class="stat-card coral"><div class="stat-label">Perros morosos</div><div class="stat-value">${debtStays.length + debtDcs.length}</div></div>
+    <div class="stat-card red" style="background:var(--red-50)"><div class="stat-label">Deuda total</div><div class="stat-value" style="color:var(--red-800)">${fmtMoney(debtTotal)}</div></div>
+    <div class="stat-card amber"><div class="stat-label">Mayor atraso</div><div class="stat-value">${maxDebtDays}</div><div class="stat-sub">días</div></div>
+    ${debtRestCount ? `<div class="stat-card amber"><div class="stat-label">🍽️ Rest. pendiente</div><div class="stat-value" style="color:var(--amber-800)">${fmtMoney(debtRestTotal)}</div><div class="stat-sub">${debtRestCount} consumo(s)</div></div>` : ''}
+  </div>`;
+  if (!debtHtml) debtHtml = '<div class="empty-state"><div class="empty-icon">🎉</div><p>No hay perros morosos.</p></div>';
+  document.getElementById('income-deudas-wrap').innerHTML = debtCards + debtHtml;
 
   // Restaurant debts — append after stay debt table
   const restDebt = allRest.filter(r => !r.paid).sort((a,b) => a.date.localeCompare(b.date));
