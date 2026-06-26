@@ -5303,6 +5303,10 @@ function saveStay() {
     alertEl.innerHTML = '<div class="alert alert-danger">La fecha de salida debe ser posterior al ingreso.</div>';
     return;
   }
+  if (!editingStayId && checkin > today()) {
+    alertEl.innerHTML = '<div class="alert alert-danger">No se puede registrar un hospedaje con una fecha de ingreso posterior a la fecha de hoy. Si el servicio aún no ha iniciado, debe registrarse como una reserva.</div>';
+    return;
+  }
 
   // Duplicate / overlap check
   const _scConf = _dogDateConflicts(dogId, 'hospedaje', checkin, isOpenEnded ? null : checkout, { stayId: editingStayId });
@@ -5963,6 +5967,10 @@ function saveDaycare() {
   }
   if (!dogId || !date || !rateValid) {
     alertEl.innerHTML = '<div class="alert alert-danger">Completa todos los campos obligatorios.</div>';
+    return;
+  }
+  if (!_editDaycareId && date > today()) {
+    alertEl.innerHTML = '<div class="alert alert-danger">No se puede registrar un daycare con una fecha de ingreso posterior a la fecha de hoy. Si el servicio aún no ha iniciado, debe registrarse como una reserva.</div>';
     return;
   }
 
