@@ -7286,7 +7286,7 @@ function renderIncome() {
   // ── BLOQUE 1: Resumen financiero ────────────────────────────────────────────
   document.getElementById('income-stats-wrap').innerHTML =
     secHead(icoDollar, '#dcfce7', 'Resumen financiero', 'Visión general de ingresos y estados de cobro', false) +
-    `<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;align-items:stretch">
+    `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;align-items:stretch">
       ${kpiCard(icoReceipt,  '#fee2e2', '#dc2626',
                 'Deuda total efectiva',
                 'deuda de perros morosos + deuda de perros que aún están en Aldea',
