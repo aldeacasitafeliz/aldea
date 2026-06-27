@@ -6727,6 +6727,7 @@ function switchIncomeTab(tab, btn) {
 let _incomeFilter   = { from: '', to: '' };
 let _incomeViewMode   = { pendiente: 'individual', deudas: 'individual', cobrado: 'individual' };
 let _cobradoDogItems  = new Map(); // dogId → items[], populated in renderIncome
+let _cobradoByDogFilter = { from: '', to: '' }; // period exclusivo para cobrado byDog
 
 function toggleIncomeViewMode(tab) {
   _incomeViewMode[tab] = _incomeViewMode[tab] === 'byDog' ? 'individual' : 'byDog';
@@ -7025,6 +7026,40 @@ function setIncomePeriod(mode) {
       : from ? `Desde ${fmtDate(from)}` : `Hasta ${fmtDate(to)}`;
   }
 
+  renderIncome();
+}
+
+function setCobradoByDogPeriod(mode) {
+  const t = today();
+  const d = new Date(t + 'T12:00:00');
+  let from = '', to = '';
+  if (mode === 'month') {
+    from = t.slice(0,7) + '-01';
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    to = last.toISOString().slice(0,10);
+  } else if (mode === 'week') {
+    const dow = d.getDay();
+    const mon = new Date(d); mon.setDate(d.getDate() - ((dow + 6) % 7));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    from = mon.toISOString().slice(0,10);
+    to   = sun.toISOString().slice(0,10);
+  } else if (mode === 'custom') {
+    from = document.getElementById('cbd-from')?.value || '';
+    to   = document.getElementById('cbd-to')?.value   || '';
+  }
+  _cobradoByDogFilter = { from, to };
+  if (mode !== 'custom') {
+    const f = document.getElementById('cbd-from');
+    const t2 = document.getElementById('cbd-to');
+    if (f) f.value = from;
+    if (t2) t2.value = to;
+  }
+  ['month','week'].forEach(m => {
+    const btn = document.getElementById('cbd-btn-' + m);
+    if (!btn) return;
+    btn.className = btn.className.replace('btn-primary','btn-secondary').replace('btn-secondary','btn-secondary');
+    if (m === mode) btn.className = btn.className.replace('btn-secondary','btn-primary');
+  });
   renderIncome();
 }
 
@@ -7918,9 +7953,60 @@ function renderIncome() {
   let cobradoHtml = cobradoToggleBtn;
 
   if (_incomeViewMode.cobrado === 'byDog') {
-    if (cobradoItems.length) {
+    // Filtro exclusivo para byDog — usa todos los pagos, no el período global
+    if (!_cobradoByDogFilter.from && !_cobradoByDogFilter.to) {
+      const t = today(), d = new Date(t + 'T12:00:00');
+      _cobradoByDogFilter = {
+        from: t.slice(0,7) + '-01',
+        to: new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10)
+      };
+    }
+    const cbdFrom = _cobradoByDogFilter.from;
+    const cbdTo   = _cobradoByDogFilter.to;
+    const cbdInRange = date => (!cbdFrom || date >= cbdFrom) && (!cbdTo || date <= cbdTo);
+
+    const allStaysAll = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+    const cbdItems = [
+      ...DB.payments.filter(p => cbdInRange(p.date) && allStaysAll.some(s => s.id === p.stay_id)).map(p => {
+        const stay = DB.stays.find(s => s.id === p.stay_id);
+        const dog  = stay ? DB.getDog(stay.dog_id) : null;
+        return { dog_id: stay?.dog_id, date: p.date, tipo: 'Hospedaje', _type: 'stay', refId: stay?.id,
+          servicio: stay ? `Hospedaje ${fmtDate(stay.check_in_date)}–${stay.check_out_date?fmtDate(stay.check_out_date):'abierta'}` : '—',
+          nota: p.note||'', amount: parseFloat(p.amount) };
+      }),
+      ..._reportDaycares().filter(d => cbdInRange(d.date)).map(d => {
+        return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
+          servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
+          amount: calcDaycareTotal(d) };
+      }),
+      ...DB.restaurant.filter(r => r.paid && cbdInRange(r.paid_date||r.date)).map(r => {
+        return { dog_id: r.dog_id, date: r.paid_date||r.date, tipo: 'Restaurante', _type: 'rest', refId: r.id,
+          servicio: `Restaurante ${fmtDate(r.date)} (${r.meals} comida(s))`, nota: r.notes||'',
+          amount: r.total };
+      })
+    ].sort((a,b) => b.date.localeCompare(a.date));
+
+    const cbdActiveMode = !cbdFrom && !cbdTo ? 'all'
+      : cbdFrom === today().slice(0,7)+'-01' ? 'month' : '';
+    const filterUI = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+                                  padding:10px 14px;background:var(--surface);
+                                  border-bottom:1px solid var(--border);margin-bottom:12px">
+      <button id="cbd-btn-month" class="btn btn-sm ${cbdActiveMode==='month'?'btn-primary':'btn-secondary'}"
+              onclick="setCobradoByDogPeriod('month')">Este mes</button>
+      <button id="cbd-btn-week"  class="btn btn-sm ${cbdActiveMode==='week'?'btn-primary':'btn-secondary'}"
+              onclick="setCobradoByDogPeriod('week')">Esta semana</button>
+      <span class="text-muted text-sm" style="margin-left:4px">Desde:</span>
+      <input type="date" id="cbd-from" class="form-control" style="height:30px;max-width:145px;font-size:12px"
+             value="${cbdFrom}" onchange="setCobradoByDogPeriod('custom')">
+      <span class="text-muted text-sm">Hasta:</span>
+      <input type="date" id="cbd-to"   class="form-control" style="height:30px;max-width:145px;font-size:12px"
+             value="${cbdTo}"   onchange="setCobradoByDogPeriod('custom')">
+    </div>`;
+    cobradoHtml += filterUI;
+
+    if (cbdItems.length) {
       _cobradoDogItems = new Map();
-      cobradoItems.forEach(i => {
+      cbdItems.forEach(i => {
         if (!i.dog_id) return;
         if (!_cobradoDogItems.has(i.dog_id)) _cobradoDogItems.set(i.dog_id, { amount: 0, items: [] });
         _cobradoDogItems.get(i.dog_id).amount += i.amount;
