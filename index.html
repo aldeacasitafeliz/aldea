@@ -7421,7 +7421,7 @@ function renderIncome() {
       ${kpiCard(icoReceipt,  '#fee2e2', '#dc2626',
                 'Deuda total efectiva',
                 'deuda de perros morosos + deuda de perros que aún están en Aldea',
-                fmtMoney(totalPendienteEfectivo), '#dc2626',
+                fmtMoney(totalPendienteEfectivo + totalMorosoEfectivo), '#dc2626',
                 'hospedaje + daycare + restaurante', '#dc2626')}
       ${kpiCard(icoCalendar, '#dbeafe', '#2563eb',
                 'Pendiente potencial',
@@ -7506,7 +7506,7 @@ function renderIncome() {
   // ── BLOQUE 3: Proyección de ingresos ────────────────────────────────────────
   const pieTotal  = totalProyectadoPotencial || 1;
   const pCobrado  = totalPagado             / pieTotal * 360;
-  const pDeuda    = totalPendienteEfectivo  / pieTotal * 360;
+  const pDeuda    = (totalPendienteEfectivo + totalMorosoEfectivo) / pieTotal * 360;
   const pieGrad   = `conic-gradient(#16a34a 0deg ${pCobrado.toFixed(1)}deg,` +
                     `#dc2626 ${pCobrado.toFixed(1)}deg ${(pCobrado+pDeuda).toFixed(1)}deg,` +
                     `#7c3aed ${(pCobrado+pDeuda).toFixed(1)}deg 360deg)`;
@@ -7554,7 +7554,7 @@ function renderIncome() {
               <span style="width:10px;height:10px;border-radius:50%;background:#dc2626;flex-shrink:0"></span>
               <span style="font-size:12px;color:#374151">Deuda total efectiva</span>
             </div>
-            <span style="font-size:12px;font-weight:600;color:#374151">${fmtMoney(totalPendienteEfectivo)}</span>
+            <span style="font-size:12px;font-weight:600;color:#374151">${fmtMoney(totalPendienteEfectivo + totalMorosoEfectivo)}</span>
           </div>
           <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
             <div style="display:flex;align-items:center;gap:7px">
