@@ -7188,35 +7188,51 @@ function renderIncome() {
   const allStaysGlobal = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allRestGlobal  = DB.restaurant;
   const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente');
-  const allDcsGlobal = _reportDaycares();
-  const totalPendienteEfectivo = allStaysGlobal.reduce((s,x) => s + getPendingAmount(x), 0)
-                               + allRestGlobal.filter(r => !r.paid).reduce((s,r) => s + r.total, 0)
-                               + allDcsGlobal.reduce((s,d) => s + getDcPendingAmount(d), 0);
+  const allDcsGlobal   = _reportDaycares();
+
+  // ── Helpers de clasificación activo/moroso (usados en KPIs y en tabs) ──
+  const _isActiveStay = s => s.open_ended || !s.check_out_date || s.check_out_date > today();
+  const _restIsActive = r => {
+    const matchStay = allStaysGlobal.find(s =>
+      s.dog_id === r.dog_id && s.check_in_date <= r.date &&
+      (s.open_ended || !s.check_out_date || s.check_out_date >= r.date)
+    );
+    if (matchStay) return _isActiveStay(matchStay);
+    const matchDc = allDcsGlobal.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time);
+    if (matchDc) return true;
+    return false;
+  };
+  const morosoRest = allRestGlobal.filter(r => !r.paid && !_restIsActive(r));
+  const pendRestAll = allRestGlobal.filter(r => !r.paid && _restIsActive(r));
+
+  const totalPendienteEfectivo =
+      allStaysGlobal.filter(s => getPendingAmount(s) > 0 && _isActiveStay(s)).reduce((s,x) => s + getPendingAmount(x), 0)
+    + pendRestAll.reduce((s,r) => s + r.total, 0)
+    + allDcsGlobal.filter(d => getDcPendingAmount(d) > 0 && !d.departure_time).reduce((s,d) => s + getDcPendingAmount(d), 0);
+  const totalMorosoEfectivo =
+      allStaysGlobal.filter(s => s.check_out_date && s.check_out_date <= today() && getPendingAmount(s) > 0).reduce((s,x) => s + getPendingAmount(x), 0)
+    + morosoRest.reduce((s,r) => s + r.total, 0)
+    + allDcsGlobal.filter(d => d.departure_time && getDcPendingAmount(d) > 0).reduce((s,d) => s + getDcPendingAmount(d), 0);
+
   // Pendiente potencial = reservas pendientes no activadas
   const totalPendientePotencial = allPendingRes.reduce((s,r) => s + Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)), 0);
   // Proyectados
-  const totalProyectadoEfectivo  = totalPagado + totalPendienteEfectivo;
+  const totalProyectadoEfectivo  = totalPagado + totalPendienteEfectivo + totalMorosoEfectivo;
   const totalProyectadoPotencial = totalProyectadoEfectivo + totalPendientePotencial;
-  // Conteo deudores split morosos vs activos
-  const morososPending = allStaysGlobal
-    .filter(s => s.check_out_date <= today() && getPendingAmount(s) > 0)
-    .reduce((sum,s) => sum + getPendingAmount(s), 0)
-    + allDcsGlobal.filter(d => d.departure_time && getDcPendingAmount(d) > 0)
-    .reduce((sum,d) => sum + getDcPendingAmount(d), 0);
-  const activePending = allStaysGlobal
-    .filter(s => s.status !== 'cancelado' && (s.open_ended || !s.check_out_date || s.check_out_date > today()) && getPendingAmount(s) > 0)
-    .reduce((sum,s) => sum + getPendingAmount(s), 0)
-    + allDcsGlobal.filter(d => !d.departure_time && getDcPendingAmount(d) > 0)
-    .reduce((sum,d) => sum + getDcPendingAmount(d), 0);
+
+  const morososPending = totalMorosoEfectivo;
+  const activePending  = totalPendienteEfectivo;
   const listoParaCobrar = totalPagado + morososPending;
 
   const morososDogIds = new Set([
-    ...allStaysGlobal.filter(s => s.check_out_date <= today() && getPendingAmount(s) > 0).map(s => s.dog_id),
-    ...allDcsGlobal.filter(d => d.departure_time && getDcPendingAmount(d) > 0).map(d => d.dog_id)
+    ...allStaysGlobal.filter(s => s.check_out_date && s.check_out_date <= today() && getPendingAmount(s) > 0).map(s => s.dog_id),
+    ...allDcsGlobal.filter(d => d.departure_time && getDcPendingAmount(d) > 0).map(d => d.dog_id),
+    ...morosoRest.map(r => r.dog_id)
   ]);
   const activoDogIds = new Set([
-    ...allStaysGlobal.filter(s => (s.open_ended || !s.check_out_date || s.check_out_date > today()) && getPendingAmount(s) > 0).map(s => s.dog_id),
+    ...allStaysGlobal.filter(s => _isActiveStay(s) && getPendingAmount(s) > 0).map(s => s.dog_id),
     ...allDcsGlobal.filter(d => !d.departure_time && getDcPendingAmount(d) > 0).map(d => d.dog_id),
+    ...pendRestAll.map(r => r.dog_id)
   ]);
   const morososCount = morososDogIds.size;
   const activoCount  = activoDogIds.size;
@@ -7473,20 +7489,9 @@ function renderIncome() {
     </div>`;
 
   // TAB: PENDIENTE — solo servicios activos (perro sigue en Aldea)
-  const _isActiveStay = s => s.open_ended || !s.check_out_date || s.check_out_date > today();
-  const _restIsActive = r => {
-    const matchStay = allStaysGlobal.find(s =>
-      s.dog_id === r.dog_id && s.check_in_date <= r.date &&
-      (s.open_ended || !s.check_out_date || s.check_out_date >= r.date)
-    );
-    if (matchStay) return _isActiveStay(matchStay);
-    const matchDc = allDcsGlobal.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time);
-    if (matchDc) return true;
-    return false; // sin estadía/daycare que cubra la fecha → moroso
-  };
-  const pendStays  = allStaysGlobal.filter(s => getPendingAmount(s) > 0 && _isActiveStay(s)).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
-  const pendRest   = allRestGlobal.filter(r => !r.paid && _restIsActive(r)).sort((a,b) => a.date.localeCompare(b.date));
-  const morosoRest = allRestGlobal.filter(r => !r.paid && !_restIsActive(r));
+  // _isActiveStay, _restIsActive, morosoRest, pendRestAll ya definidos arriba en bloque KPI
+  const pendStays = allStaysGlobal.filter(s => getPendingAmount(s) > 0 && _isActiveStay(s)).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
+  const pendRest  = pendRestAll.slice().sort((a,b) => a.date.localeCompare(b.date));
   const pendResArr= DB.reservas.filter(r => r.status === 'pendiente' && Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)) > 0);
 
   const pendItems = [];
