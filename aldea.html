@@ -7954,71 +7954,74 @@ function renderIncome() {
     </button>
   </div>`;
 
-  let cobradoHtml = cobradoToggleBtn;
+  // Filtro de cobrado — compartido entre "ver por perro" y "ver por cobro"
+  if (!_cobradoByDogFilter.from && !_cobradoByDogFilter.to) {
+    const t = today(), d = new Date(t + 'T12:00:00');
+    _cobradoByDogFilter = {
+      from: t.slice(0,7) + '-01',
+      to: new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10)
+    };
+  }
+  const cbdFrom = _cobradoByDogFilter.from;
+  const cbdTo   = _cobradoByDogFilter.to;
+  const cbdInRange = date => (!cbdFrom || date >= cbdFrom) && (!cbdTo || date <= cbdTo);
+
+  const allStaysAll = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  const cbdItems = [
+    ...DB.payments.filter(p => cbdInRange(p.date) && allStaysAll.some(s => s.id === p.stay_id)).map(p => {
+      const stay = DB.stays.find(s => s.id === p.stay_id);
+      const dog  = stay ? DB.getDog(stay.dog_id) : null;
+      return { dog_id: stay?.dog_id, date: p.date, tipo: 'Hospedaje', _type: 'stay', refId: stay?.id,
+        servicio: stay ? `Hospedaje ${fmtDate(stay.check_in_date)}–${stay.check_out_date?fmtDate(stay.check_out_date):'abierta'}` : '—',
+        nota: p.note||'', amount: parseFloat(p.amount),
+        dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: `<button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">✕</button>` };
+    }),
+    ..._reportDaycares().filter(d => cbdInRange(d.date) && getDcPaidAmount(d) > 0).map(d => {
+      const dog = DB.getDog(d.dog_id);
+      return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
+        servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
+        amount: getDcPaidAmount(d), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${d.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${d.id});renderIncome()">✕</button>` };
+    }),
+    ...DB.restaurant.filter(r => r.paid && cbdInRange(r.paid_date||r.date)).map(r => {
+      const dog = DB.getDog(r.dog_id);
+      return { dog_id: r.dog_id, date: r.paid_date||r.date, tipo: 'Restaurante', _type: 'rest', refId: r.id,
+        servicio: `Restaurante ${fmtDate(r.date)} (${r.meals} comida(s))`, nota: r.notes||'',
+        amount: r.total, dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: `<button class="btn btn-secondary btn-sm" onclick="openRestaurantModal(${r.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${r.id});renderIncome()">✕</button>` };
+    }),
+    ...DB.reservas.filter(r => r.status !== 'activa' && _reservaAdvanceTotal(r) > 0).flatMap(r => {
+      const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+      if (!advDate || !cbdInRange(advDate)) return [];
+      const dog = DB.getDog(r.dog_id);
+      return [{ dog_id: r.dog_id, date: advDate, tipo: 'Adelanto reserva', _type: 'rest', refId: r.id,
+        servicio: `Reserva ${r.type||''} ${fmtDate(r.reserved_from||r.date||'')}`,
+        nota: 'Adelanto al registro', amount: _reservaAdvanceTotal(r),
+        dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: '' }];
+    })
+  ].sort((a,b) => b.date.localeCompare(a.date));
+
+  const cbdActiveMode = cbdFrom === today().slice(0,7)+'-01' ? 'month' : '';
+  const cbdFilterUI = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+                                padding:10px 14px;background:var(--surface);
+                                border-bottom:1px solid var(--border);margin-bottom:12px">
+    <button id="cbd-btn-month" class="btn btn-sm ${cbdActiveMode==='month'?'btn-primary':'btn-secondary'}"
+            onclick="setCobradoByDogPeriod('month')">Este mes</button>
+    <button id="cbd-btn-week"  class="btn btn-sm ${cbdActiveMode==='week'?'btn-primary':'btn-secondary'}"
+            onclick="setCobradoByDogPeriod('week')">Esta semana</button>
+    <span class="text-muted text-sm" style="margin-left:4px">Desde:</span>
+    <input type="date" id="cbd-from" class="form-control" style="height:30px;max-width:145px;font-size:12px"
+           value="${cbdFrom}" onchange="setCobradoByDogPeriod('custom')">
+    <span class="text-muted text-sm">Hasta:</span>
+    <input type="date" id="cbd-to"   class="form-control" style="height:30px;max-width:145px;font-size:12px"
+           value="${cbdTo}"   onchange="setCobradoByDogPeriod('custom')">
+  </div>`;
+
+  let cobradoHtml = cobradoToggleBtn + cbdFilterUI;
 
   if (_incomeViewMode.cobrado === 'byDog') {
-    // Filtro exclusivo para byDog — usa todos los pagos, no el período global
-    if (!_cobradoByDogFilter.from && !_cobradoByDogFilter.to) {
-      const t = today(), d = new Date(t + 'T12:00:00');
-      _cobradoByDogFilter = {
-        from: t.slice(0,7) + '-01',
-        to: new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10)
-      };
-    }
-    const cbdFrom = _cobradoByDogFilter.from;
-    const cbdTo   = _cobradoByDogFilter.to;
-    const cbdInRange = date => (!cbdFrom || date >= cbdFrom) && (!cbdTo || date <= cbdTo);
-
-    const allStaysAll = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
-    const cbdItems = [
-      // Pagos de hospedaje cuya fecha de pago está en el rango
-      ...DB.payments.filter(p => cbdInRange(p.date) && allStaysAll.some(s => s.id === p.stay_id)).map(p => {
-        const stay = DB.stays.find(s => s.id === p.stay_id);
-        return { dog_id: stay?.dog_id, date: p.date, tipo: 'Hospedaje', _type: 'stay', refId: stay?.id,
-          servicio: stay ? `Hospedaje ${fmtDate(stay.check_in_date)}–${stay.check_out_date?fmtDate(stay.check_out_date):'abierta'}` : '—',
-          nota: p.note||'', amount: parseFloat(p.amount) };
-      }),
-      // Daycares en el rango — usando monto efectivamente pagado
-      ..._reportDaycares().filter(d => cbdInRange(d.date) && getDcPaidAmount(d) > 0).map(d => {
-        return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
-          servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
-          amount: getDcPaidAmount(d) };
-      }),
-      // Restaurante cobrado en el rango
-      ...DB.restaurant.filter(r => r.paid && cbdInRange(r.paid_date||r.date)).map(r => {
-        return { dog_id: r.dog_id, date: r.paid_date||r.date, tipo: 'Restaurante', _type: 'rest', refId: r.id,
-          servicio: `Restaurante ${fmtDate(r.date)} (${r.meals} comida(s))`, nota: r.notes||'',
-          amount: r.total };
-      }),
-      // Adelantos de reservas (no activadas) cobrados en el rango
-      ...DB.reservas.filter(r => r.status !== 'activa' && _reservaAdvanceTotal(r) > 0).flatMap(r => {
-        const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
-        if (!advDate || !cbdInRange(advDate)) return [];
-        const dog = DB.getDog(r.dog_id);
-        return [{ dog_id: r.dog_id, date: advDate, tipo: 'Adelanto reserva', _type: 'rest', refId: r.id,
-          servicio: `Reserva ${r.type||''} ${fmtDate(r.reserved_from||r.date||'')}`,
-          nota: 'Adelanto al registro', amount: _reservaAdvanceTotal(r) }];
-      })
-    ].sort((a,b) => b.date.localeCompare(a.date));
-
-    const cbdActiveMode = !cbdFrom && !cbdTo ? 'all'
-      : cbdFrom === today().slice(0,7)+'-01' ? 'month' : '';
-    const filterUI = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-                                  padding:10px 14px;background:var(--surface);
-                                  border-bottom:1px solid var(--border);margin-bottom:12px">
-      <button id="cbd-btn-month" class="btn btn-sm ${cbdActiveMode==='month'?'btn-primary':'btn-secondary'}"
-              onclick="setCobradoByDogPeriod('month')">Este mes</button>
-      <button id="cbd-btn-week"  class="btn btn-sm ${cbdActiveMode==='week'?'btn-primary':'btn-secondary'}"
-              onclick="setCobradoByDogPeriod('week')">Esta semana</button>
-      <span class="text-muted text-sm" style="margin-left:4px">Desde:</span>
-      <input type="date" id="cbd-from" class="form-control" style="height:30px;max-width:145px;font-size:12px"
-             value="${cbdFrom}" onchange="setCobradoByDogPeriod('custom')">
-      <span class="text-muted text-sm">Hasta:</span>
-      <input type="date" id="cbd-to"   class="form-control" style="height:30px;max-width:145px;font-size:12px"
-             value="${cbdTo}"   onchange="setCobradoByDogPeriod('custom')">
-    </div>`;
-    cobradoHtml += filterUI;
-
     if (cbdItems.length) {
       _cobradoDogItems = new Map();
       cbdItems.forEach(i => {
@@ -8054,18 +8057,26 @@ function renderIncome() {
       cobradoHtml += '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
     }
   } else {
-    cobradoHtml += cobradoItems.length ? `<table>
-      <thead><tr><th>Fecha</th><th>Perro</th><th>Tipo</th><th>Nota</th><th class="text-right">Monto</th><th></th></tr></thead>
-      <tbody>${cobradoItems.map(r => `
-        <tr>
-          <td>${fmtDate(r.date)}</td>
-          <td>${r.dogName}</td>
-          <td><span class="badge ${r._type==='stay'?'badge-green':r._type==='dc'?'badge-teal':'badge-amber'}">${r.tipo}</span></td>
-          <td class="text-muted text-sm">${r.nota||'—'}</td>
-          <td class="text-right"><strong>${fmtMoney(r.amount)}</strong></td>
-          <td style="white-space:nowrap">${r.actions}</td>
-        </tr>`).join('')}</tbody></table>`
-      : '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
+    if (cbdItems.length) {
+      const grandTotal = cbdItems.reduce((s,r) => s + r.amount, 0);
+      cobradoHtml += `<table>
+        <thead><tr><th>Fecha</th><th>Perro</th><th>Tipo</th><th>Nota</th><th class="text-right">Monto</th><th></th></tr></thead>
+        <tbody>${cbdItems.map(r => `
+          <tr>
+            <td>${fmtDate(r.date)}</td>
+            <td>${r.dogName}</td>
+            <td><span class="badge ${r._type==='stay'?'badge-green':r._type==='dc'?'badge-teal':'badge-amber'}">${r.tipo}</span></td>
+            <td class="text-muted text-sm">${r.nota||'—'}</td>
+            <td class="text-right"><strong>${fmtMoney(r.amount)}</strong></td>
+            <td style="white-space:nowrap">${r.actions||''}</td>
+          </tr>`).join('')}</tbody></table>
+      <div style="text-align:right;font-weight:700;font-size:13px;color:var(--green-800);
+                  padding:8px 14px;border-top:2px solid var(--green-200);margin-top:0">
+        TOTAL COBRADO EN EL PERÍODO: ${fmtMoney(grandTotal)}
+      </div>`;
+    } else {
+      cobradoHtml += '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
+    }
   }
 
   document.getElementById('income-cobrado-wrap').innerHTML = cobradoHtml;
