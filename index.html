@@ -7609,34 +7609,55 @@ function renderIncome() {
 
   // ── Vista agrupada por perro — pendiente ──
   const _buildPendGrouped = () => {
-    const dogMap = new Map();
-    const addItem = (dogId, amount, badge) => {
-      if (!dogMap.has(dogId)) dogMap.set(dogId, { amount: 0, badges: [] });
-      dogMap.get(dogId).amount += amount;
-      dogMap.get(dogId).badges.push(badge);
+    const morososMap = new Map();
+    const activosMap = new Map();
+    const addItem = (map, dogId, amount, badge) => {
+      if (!map.has(dogId)) map.set(dogId, { amount: 0, badges: [] });
+      map.get(dogId).amount += amount;
+      map.get(dogId).badges.push(badge);
     };
-    pendStays.forEach(s  => addItem(s.dog_id, getPendingAmount(s), 'Hospedaje'));
-    pendDcs.forEach(d    => addItem(d.dog_id, getDcPendingAmount(d), 'Daycare'));
-    pendRest.forEach(r   => addItem(r.dog_id, r.total, 'Restaurante'));
-    if (!dogMap.size) return '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin deudas efectivas pendientes.</p></div>';
-    const rows = [...dogMap.entries()]
-      .sort((a,b) => b[1].amount - a[1].amount)
-      .map(([dogId, data]) => {
-        const dog   = DB.getDog(dogId);
-        const owner = getDogPrimaryOwner(dog);
-        const types = [...new Set(data.badges)].map(t =>
-          `<span class="badge ${t==='Hospedaje'?'badge-green':t==='Daycare'?'badge-teal':'badge-amber'}">${t}</span>`).join(' ');
-        return `<tr>
-          <td><strong style="cursor:pointer;color:var(--primary);text-decoration:underline;text-decoration-style:dotted"
-              onclick="openDogDebtModal(${dogId},'pendiente')">${dog?.name||'?'}</strong></td>
-          <td class="text-muted">${dog?.owner_last_name||'—'}</td>
-          <td>${types}</td>
-          <td class="text-right" style="color:var(--red-800);font-weight:700">${fmtMoney(data.amount)}</td>
-          <td>${owner?.phone||'—'}</td>
-        </tr>`;
-      });
-    return `<table><thead><tr><th>Perro</th><th>Dueño/a</th><th>Tipo</th><th class="text-right">Deuda total</th><th>Teléfono</th></tr></thead>
-      <tbody>${rows.join('')}</tbody></table>`;
+    // Morosos: stays ya con fecha de salida pasada
+    pendStays.filter(s => s.check_out_date && s.check_out_date <= today()).forEach(s => addItem(morososMap, s.dog_id, getPendingAmount(s), 'Hospedaje'));
+    pendDcs.filter(d => d.departure_time).forEach(d => addItem(morososMap, d.dog_id, getDcPendingAmount(d), 'Daycare'));
+    // Activos: stays abiertas o con salida futura + restaurante
+    pendStays.filter(s => !s.check_out_date || s.open_ended || s.check_out_date > today()).forEach(s => addItem(activosMap, s.dog_id, getPendingAmount(s), 'Hospedaje'));
+    pendDcs.filter(d => !d.departure_time).forEach(d => addItem(activosMap, d.dog_id, getDcPendingAmount(d), 'Daycare'));
+    pendRest.forEach(r => addItem(activosMap, r.dog_id, r.total, 'Restaurante'));
+
+    if (!morososMap.size && !activosMap.size) return '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin deudas efectivas pendientes.</p></div>';
+
+    const buildTable = (map, label, color) => {
+      if (!map.size) return '';
+      let total = 0;
+      const rows = [...map.entries()]
+        .sort((a,b) => b[1].amount - a[1].amount)
+        .map(([dogId, data]) => {
+          total += data.amount;
+          const dog   = DB.getDog(dogId);
+          const owner = getDogPrimaryOwner(dog);
+          const types = [...new Set(data.badges)].map(t =>
+            `<span class="badge ${t==='Hospedaje'?'badge-green':t==='Daycare'?'badge-teal':'badge-amber'}">${t}</span>`).join(' ');
+          return `<tr>
+            <td><strong style="cursor:pointer;color:var(--primary);text-decoration:underline;text-decoration-style:dotted"
+                onclick="openDogDebtModal(${dogId},'pendiente')">${dog?.name||'?'}</strong></td>
+            <td class="text-muted">${dog?.owner_last_name||'—'}</td>
+            <td>${types}</td>
+            <td class="text-right" style="color:var(--red-800);font-weight:700">${fmtMoney(data.amount)}</td>
+            <td>${owner?.phone||'—'}</td>
+          </tr>`;
+        });
+      return `<div style="margin-bottom:18px">
+        <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:${color};padding:6px 14px;background:${color}22;border-radius:6px 6px 0 0;border:1px solid ${color}44;border-bottom:none">${label}</div>
+        <table style="border-radius:0 0 6px 6px;overflow:hidden;border:1px solid ${color}44">
+          <thead><tr><th>Perro</th><th>Dueño/a</th><th>Tipo</th><th class="text-right">Deuda total</th><th>Teléfono</th></tr></thead>
+          <tbody>${rows.join('')}</tbody>
+        </table>
+        <div style="text-align:right;font-weight:700;font-size:12px;color:${color};padding:6px 14px;border:1px solid ${color}44;border-top:none;background:${color}11;border-radius:0 0 6px 6px">Total: ${fmtMoney(total)}</div>
+      </div>`;
+    };
+
+    return buildTable(morososMap, '⚠ Morosos — ya con salida', '#b91c1c') +
+           buildTable(activosMap, '🏠 Siguen en Aldea', '#166534');
   };
 
   const pendToggleBtn = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
