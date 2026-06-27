@@ -6746,7 +6746,7 @@ function openDogDebtModal(dogId, category) {
     if (matchStay) return _isActiveStayG(matchStay);
     const matchDc = allDcsG.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time);
     if (matchDc) return true;
-    return allStaysG.some(s => s.dog_id === r.dog_id && _isActiveStayG(s));
+    return false; // sin estadía/daycare que cubra la fecha → moroso
   };
 
   let debts = [];
@@ -7482,7 +7482,7 @@ function renderIncome() {
     if (matchStay) return _isActiveStay(matchStay);
     const matchDc = allDcsGlobal.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time);
     if (matchDc) return true;
-    return allStaysGlobal.some(s => s.dog_id === r.dog_id && _isActiveStay(s));
+    return false; // sin estadía/daycare que cubra la fecha → moroso
   };
   const pendStays  = allStaysGlobal.filter(s => getPendingAmount(s) > 0 && _isActiveStay(s)).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
   const pendRest   = allRestGlobal.filter(r => !r.paid && _restIsActive(r)).sort((a,b) => a.date.localeCompare(b.date));
