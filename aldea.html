@@ -6770,8 +6770,10 @@ function openDogDebtModal(dogId, category) {
   debts.sort((a,b) => a.fecha.localeCompare(b.fecha));
   const totalPend = debts.reduce((s,d) => s + d.pendiente, 0);
 
-  const rows = debts.map(d => `
-    <tr>
+  const rows = debts.map(d => {
+    const clickable = d._type === 'stay' || d._type === 'dc';
+    const onclick = d._type === 'stay' ? `openDebtBreakdown(${d.id})` : d._type === 'dc' ? `openDcDebtBreakdown(${d.id})` : '';
+    return `<tr ${clickable ? `style="cursor:pointer" onclick="${onclick}" title="Ver desglose"` : ''}>
       <td><span class="badge ${d.tipo==='Hospedaje'?'badge-green':d.tipo==='Daycare'?'badge-teal':'badge-amber'}">${d.tipo}</span></td>
       <td>${fmtDate(d.fecha)}</td>
       <td>${d.salida && d.salida.length === 10 ? fmtDate(d.salida) : d.salida}</td>
@@ -6780,7 +6782,9 @@ function openDogDebtModal(dogId, category) {
       <td style="color:var(--red-800);font-weight:700">${fmtMoney(d.pendiente)}</td>
       <td>${d.dias > 0 ? `<span class="badge badge-red">${d.dias}d</span>` : d.dias === 0 && d.tipo !== 'Restaurante' ? '<span class="badge badge-amber">hoy</span>' : '—'}</td>
       <td class="text-muted text-sm">${d.obs||'—'}</td>
-    </tr>`).join('');
+      ${clickable ? `<td style="color:var(--primary);font-size:16px;padding:0 6px">›</td>` : '<td></td>'}
+    </tr>`;
+  }).join('');
 
   const body = debts.length ? `
     <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px">
@@ -6793,7 +6797,7 @@ function openDogDebtModal(dogId, category) {
       <table style="font-size:12px">
         <thead><tr>
           <th>Tipo</th><th>Ingreso</th><th>Salida</th>
-          <th>Total</th><th>Pagado</th><th>Pendiente</th><th>Mora</th><th>Observaciones</th>
+          <th>Total</th><th>Pagado</th><th>Pendiente</th><th>Mora</th><th>Observaciones</th><th></th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
