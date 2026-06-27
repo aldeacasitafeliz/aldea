@@ -7987,9 +7987,9 @@ function renderIncome() {
 
   document.getElementById('income-deudas-wrap').innerHTML = deudaToggleBtn + debtCards + deudaContent;
 
-  // Restaurant moroso — append after stay debt table
+  // Restaurant moroso — solo en vista "ver por deuda", no en agrupada por perro
   const restDebt = morosoRest.slice().sort((a,b) => a.date.localeCompare(b.date));
-  if (restDebt.length) {
+  if (restDebt.length && _incomeViewMode.deudas !== 'byDog') {
     const restDebtTotal = restDebt.reduce((s,r) => s + r.total, 0);
     document.getElementById('income-deudas-wrap').innerHTML +=
       `<div style="margin-top:16px">
