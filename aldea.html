@@ -7967,22 +7967,33 @@ function renderIncome() {
 
     const allStaysAll = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
     const cbdItems = [
+      // Pagos de hospedaje cuya fecha de pago está en el rango
       ...DB.payments.filter(p => cbdInRange(p.date) && allStaysAll.some(s => s.id === p.stay_id)).map(p => {
         const stay = DB.stays.find(s => s.id === p.stay_id);
-        const dog  = stay ? DB.getDog(stay.dog_id) : null;
         return { dog_id: stay?.dog_id, date: p.date, tipo: 'Hospedaje', _type: 'stay', refId: stay?.id,
           servicio: stay ? `Hospedaje ${fmtDate(stay.check_in_date)}–${stay.check_out_date?fmtDate(stay.check_out_date):'abierta'}` : '—',
           nota: p.note||'', amount: parseFloat(p.amount) };
       }),
-      ..._reportDaycares().filter(d => cbdInRange(d.date)).map(d => {
+      // Daycares en el rango — usando monto efectivamente pagado
+      ..._reportDaycares().filter(d => cbdInRange(d.date) && getDcPaidAmount(d) > 0).map(d => {
         return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
           servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
-          amount: calcDaycareTotal(d) };
+          amount: getDcPaidAmount(d) };
       }),
+      // Restaurante cobrado en el rango
       ...DB.restaurant.filter(r => r.paid && cbdInRange(r.paid_date||r.date)).map(r => {
         return { dog_id: r.dog_id, date: r.paid_date||r.date, tipo: 'Restaurante', _type: 'rest', refId: r.id,
           servicio: `Restaurante ${fmtDate(r.date)} (${r.meals} comida(s))`, nota: r.notes||'',
           amount: r.total };
+      }),
+      // Adelantos de reservas (no activadas) cobrados en el rango
+      ...DB.reservas.filter(r => r.status !== 'activa' && _reservaAdvanceTotal(r) > 0).flatMap(r => {
+        const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+        if (!advDate || !cbdInRange(advDate)) return [];
+        const dog = DB.getDog(r.dog_id);
+        return [{ dog_id: r.dog_id, date: advDate, tipo: 'Adelanto reserva', _type: 'rest', refId: r.id,
+          servicio: `Reserva ${r.type||''} ${fmtDate(r.reserved_from||r.date||'')}`,
+          nota: 'Adelanto al registro', amount: _reservaAdvanceTotal(r) }];
       })
     ].sort((a,b) => b.date.localeCompare(a.date));
 
