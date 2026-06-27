@@ -7293,7 +7293,7 @@ function renderIncome() {
       (s.open_ended || !s.check_out_date || s.check_out_date >= r.date)
     );
     if (matchStay) return _isActiveStay(matchStay);
-    const matchDc = allDcsGlobal.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time);
+    const matchDc = allDcsGlobal.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time && d.date >= today());
     if (matchDc) return true;
     return false;
   };
