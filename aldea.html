@@ -7339,17 +7339,21 @@ function renderIncome() {
     return inRange(r.date);
   };
   const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r));
-  // Adelantos cobrados de reservas no activadas (pendientes o caídas) — son ingresos reales
-  const resWithAdv = DB.reservas.filter(r => r.status !== 'activa' && _reservaAdvanceTotal(r) > 0 && overlapsPeriodRes(r));
+  // Adelantos cobrados de reservas no activadas — filtrar por fecha del adelanto (dinero recibido)
+  const resWithAdv = DB.reservas.filter(r => {
+    if (r.status === 'activa' || !(_reservaAdvanceTotal(r) > 0)) return false;
+    const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+    return advDate && inRange(advDate);
+  });
   const totalResAdv = resWithAdv.reduce((s,r) => s + _reservaAdvanceTotal(r), 0);
 
-  // Cobrado = payments whose date falls IN the period
-  const paymentsInPeriod  = DB.payments.filter(p => inRange(p.date) && allStays.some(s => s.id === p.stay_id));
-  const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && allStays.some(s => s.id === p.stay_id));
+  // Cobrado = dinero recibido en el período (fecha del pago/cobro, no del servicio)
+  const paymentsInPeriod  = DB.payments.filter(p => inRange(p.date) && allStaysRaw.some(s => s.id === p.stay_id));
+  const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && allStaysRaw.some(s => s.id === p.stay_id));
   const totalCobradoHosp  = paymentsInPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
   const totalFueraPeriodo = paymentsOutPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
   const dcCobrado   = allDcs.reduce((s,d) => s + getDcPaidAmount(d), 0);
-  const restCobrado = allRest.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
+  const restCobrado = DB.restaurant.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
 
   const totalResProyectado = pendingRes.reduce((s,r) => s + calcReservaTotal(r), 0);
   const totalProyectado = allStays.reduce((s,x) => s + calcStayTotal(x), 0)
