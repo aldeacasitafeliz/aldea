@@ -6725,7 +6725,8 @@ function switchIncomeTab(tab, btn) {
 }
 
 let _incomeFilter   = { from: '', to: '' };
-let _incomeViewMode = { pendiente: 'individual', deudas: 'individual' };
+let _incomeViewMode   = { pendiente: 'individual', deudas: 'individual', cobrado: 'individual' };
+let _cobradoDogItems  = new Map(); // dogId → items[], populated in renderIncome
 
 function toggleIncomeViewMode(tab) {
   _incomeViewMode[tab] = _incomeViewMode[tab] === 'byDog' ? 'individual' : 'byDog';
@@ -6828,6 +6829,49 @@ function openDogDebtModal(dogId, category) {
 
   document.getElementById('debt-modal-title').textContent =
     `${dog?.name||'?'} — ${category === 'pendiente' ? 'Pendientes de cobro' : 'Perros morosos'}`;
+  document.getElementById('debt-modal-body').innerHTML = body;
+  document.getElementById('debt-btn-edit').style.display = 'none';
+  openModal('modal-debt-breakdown');
+}
+
+function openDogCobradoModal(dogId) {
+  const items = (_cobradoDogItems.get(dogId) || {}).items || [];
+  const dog   = DB.getDog(dogId);
+  const owner = getDogPrimaryOwner(dog);
+  const total = items.reduce((s,i) => s + i.amount, 0);
+
+  const rows = items.sort((a,b) => b.date.localeCompare(a.date)).map(i => {
+    const clickable = i._type === 'stay' || i._type === 'dc';
+    const onclick   = i._type === 'stay' ? `openDebtBreakdown(${i.refId})` : i._type === 'dc' ? `openDcDebtBreakdown(${i.refId})` : '';
+    return `<tr ${clickable ? `style="cursor:pointer" onclick="${onclick}" title="Ver estadía"` : ''}>
+      <td>${fmtDate(i.date)}</td>
+      <td><span class="badge ${i._type==='stay'?'badge-green':i._type==='dc'?'badge-teal':'badge-amber'}">${i.tipo}</span></td>
+      <td class="text-muted text-sm">${i.servicio||'—'}</td>
+      <td style="color:var(--green-800);font-weight:700">${fmtMoney(i.amount)}</td>
+      <td class="text-muted text-sm">${i.nota||'—'}</td>
+      ${clickable ? `<td style="color:var(--primary);font-size:16px;padding:0 6px">›</td>` : '<td></td>'}
+    </tr>`;
+  });
+
+  const body = `
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:15px">${dog?.name||'?'}</strong>
+      <span class="text-muted">${dog?.owner_last_name||''}</span>
+      ${owner?.phone ? `<span class="text-muted text-sm">· ${owner.phone}</span>` : ''}
+      <span class="badge badge-green" style="margin-left:auto">Total cobrado: ${fmtMoney(total)}</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table style="font-size:12px">
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Servicio</th><th>Monto</th><th>Nota</th><th></th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </div>
+    <div style="text-align:right;font-weight:700;font-size:13px;color:var(--green-800);
+                padding:8px 0;border-top:2px solid var(--green-200);margin-top:8px">
+      TOTAL COBRADO: ${fmtMoney(total)}
+    </div>`;
+
+  document.getElementById('debt-modal-title').textContent = `${dog?.name||'?'} — Cobrado en el período`;
   document.getElementById('debt-modal-body').innerHTML = body;
   document.getElementById('debt-btn-edit').style.display = 'none';
   openModal('modal-debt-breakdown');
@@ -7834,38 +7878,96 @@ function renderIncome() {
 
   // TAB: COBRADO — all payments for period stays (in-period + out-of-period), plus daycares and restaurant
   const paymentsForPeriodStays = DB.payments.filter(p => allStays.some(s => s.id === p.stay_id)).sort((a,b) => b.date.localeCompare(a.date));
-  const dcRows = allDcs.slice().sort((a,b) => b.date.localeCompare(a.date));
+  const dcRows   = allDcs.slice().sort((a,b) => b.date.localeCompare(a.date));
   const restPaid = allRest.filter(r => r.paid && inRange(r.paid_date || r.date));
-  document.getElementById('income-cobrado-wrap').innerHTML = (paymentsForPeriodStays.length || dcRows.length || restPaid.length) ? `<table>
-    <thead><tr><th>Fecha</th><th>Perro</th><th>Tipo</th><th>Nota</th><th class="text-right">Monto</th><th></th></tr></thead>
-    <tbody>${[
-      ...paymentsForPeriodStays.map(p => {
-        const stay = DB.stays.find(s => s.id === p.stay_id);
-        const dog = stay ? DB.getDog(stay.dog_id) : null;
-        const outsidePeriod = !inRange(p.date);
-        return { date: p.date, name: `${dog?.name||'?'} ${dog?.owner_last_name||''}`, type: 'Hospedaje', note: (p.note||'') + (outsidePeriod ? ' <span style="font-size:10px;background:#7c3aed;color:#fff;padding:1px 5px;border-radius:3px">fuera del período</span>' : ''), amount: p.amount,
-          actions: `<button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">✕</button>` };
-      }),
-      ...dcRows.map(d => {
-        const dog = DB.getDog(d.dog_id);
-        return { date: d.date, name: `${dog?.name||'?'} ${dog?.owner_last_name||''}`, type: 'Daycare', note: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'', amount: calcDaycareTotal(d),
-          actions: `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${d.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${d.id});renderIncome()">✕</button>` };
-      }),
-      ...restPaid.map(r => {
-        const dog = DB.getDog(r.dog_id);
-        return { date: r.paid_date||r.date, name: `${dog?.name||'?'} ${dog?.owner_last_name||''}`, type: 'Restaurante', note: `${r.meals} comida(s)`, amount: r.total,
-          actions: `<button class="btn btn-secondary btn-sm" onclick="openRestaurantModal(${r.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${r.id});renderIncome()">✕</button>` };
-      })
-    ].sort((a,b) => b.date.localeCompare(a.date)).map(r => `
-      <tr>
-        <td>${fmtDate(r.date)}</td>
-        <td>${r.name}</td>
-        <td><span class="badge ${r.type==='Hospedaje'?'badge-green':r.type==='Daycare'?'badge-teal':'badge-amber'}">${r.type}</span></td>
-        <td class="text-muted text-sm">${r.note||'—'}</td>
-        <td class="text-right"><strong>${fmtMoney(r.amount)}</strong></td>
-        <td style="white-space:nowrap">${r.actions}</td>
-      </tr>`).join('')}</tbody></table>`
-    : '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
+
+  // Construir lista unificada con dog_id
+  const cobradoItems = [
+    ...paymentsForPeriodStays.map(p => {
+      const stay = DB.stays.find(s => s.id === p.stay_id);
+      const dog  = stay ? DB.getDog(stay.dog_id) : null;
+      const outsidePeriod = !inRange(p.date);
+      return { dog_id: stay?.dog_id, date: p.date, tipo: 'Hospedaje', _type: 'stay', refId: stay?.id,
+        servicio: stay ? `Hospedaje ${fmtDate(stay.check_in_date)}–${stay.check_out_date?fmtDate(stay.check_out_date):'abierta'}` : '—',
+        nota: (p.note||'') + (outsidePeriod ? ' [fuera del período]' : ''), amount: parseFloat(p.amount),
+        dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: `<button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">✕</button>` };
+    }),
+    ...dcRows.map(d => {
+      const dog = DB.getDog(d.dog_id);
+      return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
+        servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
+        amount: calcDaycareTotal(d), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${d.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${d.id});renderIncome()">✕</button>` };
+    }),
+    ...restPaid.map(r => {
+      const dog = DB.getDog(r.dog_id);
+      return { dog_id: r.dog_id, date: r.paid_date||r.date, tipo: 'Restaurante', _type: 'rest', refId: r.id,
+        servicio: `Restaurante ${fmtDate(r.date)} (${r.meals} comida(s))`, nota: r.notes||'',
+        amount: r.total, dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: `<button class="btn btn-secondary btn-sm" onclick="openRestaurantModal(${r.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${r.id});renderIncome()">✕</button>` };
+    })
+  ].sort((a,b) => b.date.localeCompare(a.date));
+
+  const cobradoToggleBtn = `<div style="display:flex;justify-content:flex-end;margin-bottom:10px">
+    <button class="btn btn-secondary btn-sm" onclick="toggleIncomeViewMode('cobrado')">
+      ${_incomeViewMode.cobrado === 'byDog' ? '📋 Ver por cobro' : '👤 Ver por perro'}
+    </button>
+  </div>`;
+
+  let cobradoHtml = cobradoToggleBtn;
+
+  if (_incomeViewMode.cobrado === 'byDog') {
+    if (cobradoItems.length) {
+      _cobradoDogItems = new Map();
+      cobradoItems.forEach(i => {
+        if (!i.dog_id) return;
+        if (!_cobradoDogItems.has(i.dog_id)) _cobradoDogItems.set(i.dog_id, { amount: 0, items: [] });
+        _cobradoDogItems.get(i.dog_id).amount += i.amount;
+        _cobradoDogItems.get(i.dog_id).items.push(i);
+      });
+      let grandTotal = 0;
+      const rows = [..._cobradoDogItems.entries()]
+        .sort((a,b) => b[1].amount - a[1].amount)
+        .map(([dogId, data]) => {
+          const dog   = DB.getDog(dogId);
+          const owner = getDogPrimaryOwner(dog);
+          grandTotal += data.amount;
+          return `<tr>
+            <td><strong style="cursor:pointer;color:var(--primary);text-decoration:underline;text-decoration-style:dotted"
+                onclick="openDogCobradoModal(${dogId})">${dog?.name||'?'}</strong></td>
+            <td class="text-muted">${dog?.owner_last_name||'—'}</td>
+            <td style="color:var(--green-800);font-weight:700">${fmtMoney(data.amount)}</td>
+            <td>${owner?.phone||'—'}</td>
+          </tr>`;
+        });
+      cobradoHtml += `<table>
+        <thead><tr><th>Perro</th><th>Dueño/a</th><th>Total cobrado</th><th>Teléfono</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+      <div style="text-align:right;font-weight:700;font-size:13px;color:var(--green-800);
+                  padding:8px 14px;border-top:2px solid var(--green-200);margin-top:0">
+        TOTAL COBRADO EN EL PERÍODO: ${fmtMoney(grandTotal)}
+      </div>`;
+    } else {
+      cobradoHtml += '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
+    }
+  } else {
+    cobradoHtml += cobradoItems.length ? `<table>
+      <thead><tr><th>Fecha</th><th>Perro</th><th>Tipo</th><th>Nota</th><th class="text-right">Monto</th><th></th></tr></thead>
+      <tbody>${cobradoItems.map(r => `
+        <tr>
+          <td>${fmtDate(r.date)}</td>
+          <td>${r.dogName}</td>
+          <td><span class="badge ${r._type==='stay'?'badge-green':r._type==='dc'?'badge-teal':'badge-amber'}">${r.tipo}</span></td>
+          <td class="text-muted text-sm">${r.nota||'—'}</td>
+          <td class="text-right"><strong>${fmtMoney(r.amount)}</strong></td>
+          <td style="white-space:nowrap">${r.actions}</td>
+        </tr>`).join('')}</tbody></table>`
+      : '<div class="empty-state"><div class="empty-icon">💰</div><p>Sin pagos registrados.</p></div>';
+  }
+
+  document.getElementById('income-cobrado-wrap').innerHTML = cobradoHtml;
 
 
   // TAB: DEUDAS — uses global (unfiltered) lists so date filter doesn't hide real debts
