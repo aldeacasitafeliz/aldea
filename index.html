@@ -7987,13 +7987,13 @@ function renderIncome() {
 
   document.getElementById('income-deudas-wrap').innerHTML = deudaToggleBtn + debtCards + deudaContent;
 
-  // Restaurant debts — append after stay debt table
-  const restDebt = allRest.filter(r => !r.paid).sort((a,b) => a.date.localeCompare(b.date));
+  // Restaurant moroso — append after stay debt table
+  const restDebt = morosoRest.slice().sort((a,b) => a.date.localeCompare(b.date));
   if (restDebt.length) {
     const restDebtTotal = restDebt.reduce((s,r) => s + r.total, 0);
     document.getElementById('income-deudas-wrap').innerHTML +=
       `<div style="margin-top:16px">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">🍽️ Restaurante — pendiente de cobro</div>
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:8px">🍽️ Restaurante — morosos</div>
         <table>
           <thead><tr><th>Perro</th><th>Dueño</th><th>Fecha</th><th>Comidas</th><th>Total</th><th></th></tr></thead>
           <tbody>${restDebt.map(r => {
