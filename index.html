@@ -980,10 +980,12 @@ tr:hover td { background: var(--gray-50); }
         <button class="tab-btn active" id="income-tab-btn-pendiente" onclick="switchIncomeTab('pendiente',this)">Pendiente de cobro</button>
         <button class="tab-btn" id="income-tab-btn-cobrado" onclick="switchIncomeTab('cobrado',this)">Cobrado</button>
         <button class="tab-btn" id="income-tab-btn-deudas" onclick="switchIncomeTab('deudas',this)">Perros morosos</button>
+        <button class="tab-btn" id="income-tab-btn-total" onclick="switchIncomeTab('total',this)">Perros deuda total</button>
       </div>
       <div id="tab-pendiente" class="tab-panel active"><div class="card" style="padding:0;overflow:hidden"><div id="income-pendiente-wrap"></div></div></div>
       <div id="tab-cobrado" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-cobrado-wrap"></div></div></div>
       <div id="tab-deudas" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-deudas-wrap"></div></div></div>
+      <div id="tab-total" class="tab-panel"><div class="card" style="padding:0;overflow:hidden"><div id="income-total-wrap"></div></div></div>
     </div>
 
     <!-- PERROS MOROSOS -->
@@ -6831,6 +6833,99 @@ function openDogDebtModal(dogId, category) {
   openModal('modal-debt-breakdown');
 }
 
+function openDogTotalDebtModal(dogId) {
+  const dog   = DB.getDog(dogId);
+  const owner = getDogPrimaryOwner(dog);
+  const allStaysG = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  const allDcsG   = _reportDaycares();
+  const allRestG  = DB.restaurant;
+
+  const _isActiveStayL = s => s.open_ended || !s.check_out_date || s.check_out_date > today();
+  const _restIsActiveL = r => {
+    const matchStay = allStaysG.find(s =>
+      s.dog_id === r.dog_id && s.check_in_date <= r.date &&
+      (s.open_ended || !s.check_out_date || s.check_out_date >= r.date)
+    );
+    if (matchStay) return _isActiveStayL(matchStay);
+    const matchDc = allDcsG.find(d => d.dog_id === r.dog_id && d.date === r.date && !d.departure_time);
+    return !!matchDc;
+  };
+
+  const morosoStays = allStaysG.filter(s => s.dog_id === dogId && s.check_out_date && s.check_out_date <= today() && getPendingAmount(s) > 0);
+  const morosoDcs   = allDcsG.filter(d => d.dog_id === dogId && d.departure_time && getDcPendingAmount(d) > 0);
+  const morosoRest  = allRestG.filter(r => r.dog_id === dogId && !r.paid && !_restIsActiveL(r));
+  const pendStays   = allStaysG.filter(s => s.dog_id === dogId && getPendingAmount(s) > 0 && _isActiveStayL(s));
+  const pendDcs     = allDcsG.filter(d => d.dog_id === dogId && getDcPendingAmount(d) > 0 && !d.departure_time);
+  const pendRest    = allRestG.filter(r => r.dog_id === dogId && !r.paid && _restIsActiveL(r));
+
+  const buildRow = (d, clickable) => {
+    const onclick = d._type === 'stay' ? `openDebtBreakdown(${d.id})` : d._type === 'dc' ? `openDcDebtBreakdown(${d.id})` : '';
+    const cl = clickable ? `style="cursor:pointer" onclick="${onclick}" title="Ver desglose"` : '';
+    return `<tr ${cl}>
+      <td><span class="badge ${d.tipo==='Hospedaje'?'badge-green':d.tipo==='Daycare'?'badge-teal':'badge-amber'}">${d.tipo}</span></td>
+      <td>${fmtDate(d.fecha)}</td>
+      <td>${d.salida && d.salida.length===10 ? fmtDate(d.salida) : d.salida}</td>
+      <td>${fmtMoney(d.total)}</td>
+      <td style="color:var(--green-800)">${fmtMoney(d.pagado)}</td>
+      <td style="color:var(--red-800);font-weight:700">${fmtMoney(d.pendiente)}</td>
+      <td>${d.dias > 0 ? `<span class="badge badge-red">${d.dias}d</span>` : d.tipo!=='Restaurante'&&d.dias===0 ? '<span class="badge badge-amber">hoy</span>' : '—'}</td>
+      <td class="text-muted text-sm">${d.obs||'—'}</td>
+      ${clickable ? `<td style="color:var(--primary);font-size:16px;padding:0 6px">›</td>` : '<td></td>'}
+    </tr>`;
+  };
+
+  const thead = `<thead><tr><th>Tipo</th><th>Ingreso</th><th>Salida</th><th>Total</th><th>Pagado</th><th>Pendiente</th><th>Mora</th><th>Obs.</th><th></th></tr></thead>`;
+
+  const morosoRows = [
+    ...morosoStays.sort((a,b)=>a.check_in_date.localeCompare(b.check_in_date)).map(s => buildRow({ tipo:'Hospedaje', fecha:s.check_in_date, salida:s.check_out_date||'—', total:calcStayTotal(s), pagado:getPaidAmount(s.id), pendiente:getPendingAmount(s), dias:getDaysDebt(s), obs:s.notes||'', id:s.id, _type:'stay' }, true)),
+    ...morosoDcs.sort((a,b)=>a.date.localeCompare(b.date)).map(d => buildRow({ tipo:'Daycare', fecha:d.date, salida:d.departure_time, total:calcDaycareTotal(d), pagado:getDcPaidAmount(d), pendiente:getDcPendingAmount(d), dias:0, obs:d.notes||'', id:d.id, _type:'dc' }, true)),
+    ...morosoRest.sort((a,b)=>a.date.localeCompare(b.date)).map(r => buildRow({ tipo:'Restaurante', fecha:r.date, salida:'—', total:r.total, pagado:0, pendiente:r.total, dias:0, obs:r.notes||'', _type:'rest' }, false)),
+  ];
+  const pendRows = [
+    ...pendStays.sort((a,b)=>a.check_in_date.localeCompare(b.check_in_date)).map(s => buildRow({ tipo:'Hospedaje', fecha:s.check_in_date, salida:s.open_ended?'(abierta)':(s.check_out_date||'(sin fecha)'), total:calcStayTotal(s), pagado:getPaidAmount(s.id), pendiente:getPendingAmount(s), dias:0, obs:s.notes||'', id:s.id, _type:'stay' }, true)),
+    ...pendDcs.sort((a,b)=>a.date.localeCompare(b.date)).map(d => buildRow({ tipo:'Daycare', fecha:d.date, salida:'(en curso)', total:calcDaycareTotal(d), pagado:getDcPaidAmount(d), pendiente:getDcPendingAmount(d), dias:0, obs:d.notes||'', id:d.id, _type:'dc' }, true)),
+    ...pendRest.sort((a,b)=>a.date.localeCompare(b.date)).map(r => buildRow({ tipo:'Restaurante', fecha:r.date, salida:'—', total:r.total, pagado:0, pendiente:r.total, dias:0, obs:r.notes||'', _type:'rest' }, false)),
+  ];
+
+  const morosoTotal = morosoStays.reduce((s,x)=>s+getPendingAmount(x),0) + morosoDcs.reduce((s,d)=>s+getDcPendingAmount(d),0) + morosoRest.reduce((s,r)=>s+r.total,0);
+  const pendTotal   = pendStays.reduce((s,x)=>s+getPendingAmount(x),0) + pendDcs.reduce((s,d)=>s+getDcPendingAmount(d),0) + pendRest.reduce((s,r)=>s+r.total,0);
+
+  const section = (label, color, rows, subtotal) => rows.length ? `
+    <div style="margin-bottom:18px">
+      <div style="font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:${color};
+                  padding:6px 14px;background:${color}22;border-radius:6px 6px 0 0;border:1px solid ${color}44;border-bottom:none">
+        ${label}
+      </div>
+      <div style="overflow-x:auto;border:1px solid ${color}44;border-top:none;border-radius:0 0 6px 6px">
+        <table style="font-size:12px">${thead}<tbody>${rows.join('')}</tbody></table>
+      </div>
+      <div style="text-align:right;font-size:12px;font-weight:700;color:${color};padding:5px 14px;
+                  border:1px solid ${color}44;border-top:none;background:${color}11;border-radius:0 0 6px 6px">
+        Subtotal: ${fmtMoney(subtotal)}
+      </div>
+    </div>` : '';
+
+  const body = `
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <strong style="font-size:15px">${dog?.name||'?'}</strong>
+      <span class="text-muted">${dog?.owner_last_name||''}</span>
+      ${owner?.phone ? `<span class="text-muted text-sm">· ${owner.phone}</span>` : ''}
+      <span class="badge badge-red" style="margin-left:auto">Deuda total: ${fmtMoney(morosoTotal+pendTotal)}</span>
+    </div>
+    ${section('⚠ Deudas morosas — servicios finalizados', '#b91c1c', morosoRows, morosoTotal)}
+    ${section('🏠 Pendientes de cobro — servicios activos', '#166534', pendRows, pendTotal)}
+    ${!morosoRows.length && !pendRows.length ? '<p class="text-muted">Sin deudas registradas.</p>' : ''}
+    <div style="text-align:right;font-weight:700;font-size:13px;color:var(--red-800);
+                padding:8px 0;border-top:2px solid var(--red-200);margin-top:4px">
+      DEUDA TOTAL: ${fmtMoney(morosoTotal+pendTotal)}
+    </div>`;
+
+  document.getElementById('debt-modal-title').textContent = `${dog?.name||'?'} — Deuda total`;
+  document.getElementById('debt-modal-body').innerHTML = body;
+  document.getElementById('debt-btn-edit').style.display = 'none';
+  openModal('modal-debt-breakdown');
+}
+
 function setIncomePeriod(mode) {
   const t = today();
   const d = new Date(t + 'T12:00:00');
@@ -7925,6 +8020,59 @@ function renderIncome() {
         </table>
       </div>`;
   }
+
+  // TAB: PERROS DEUDA TOTAL
+  const totalDogMap = new Map();
+  const addToMap = (dogId, moroso, pend) => {
+    if (!totalDogMap.has(dogId)) totalDogMap.set(dogId, { moroso: 0, pend: 0 });
+    totalDogMap.get(dogId).moroso += moroso;
+    totalDogMap.get(dogId).pend   += pend;
+  };
+  debtStays.forEach(s => addToMap(s.dog_id, getPendingAmount(s), 0));
+  debtDcs.forEach(d => addToMap(d.dog_id, getDcPendingAmount(d), 0));
+  morosoRest.forEach(r => addToMap(r.dog_id, r.total, 0));
+  pendStays.forEach(s => addToMap(s.dog_id, 0, getPendingAmount(s)));
+  pendDcs.forEach(d => addToMap(d.dog_id, 0, getDcPendingAmount(d)));
+  pendRest.forEach(r => addToMap(r.dog_id, 0, r.total));
+
+  let totalTabHtml = '';
+  if (totalDogMap.size) {
+    let grandTotal = 0;
+    const rows = [...totalDogMap.entries()]
+      .sort((a,b) => (b[1].moroso+b[1].pend) - (a[1].moroso+a[1].pend))
+      .map(([dogId, data]) => {
+        const dog   = DB.getDog(dogId);
+        const owner = getDogPrimaryOwner(dog);
+        const total = data.moroso + data.pend;
+        grandTotal += total;
+        return `<tr>
+          <td><strong style="cursor:pointer;color:var(--primary);text-decoration:underline;text-decoration-style:dotted"
+              onclick="openDogTotalDebtModal(${dogId})">${dog?.name||'?'}</strong></td>
+          <td class="text-muted">${dog?.owner_last_name||'—'}</td>
+          <td style="color:var(--red-800);font-weight:600">${data.moroso > 0 ? fmtMoney(data.moroso) : '<span class="text-muted">—</span>'}</td>
+          <td style="color:var(--amber-800);font-weight:600">${data.pend > 0 ? fmtMoney(data.pend) : '<span class="text-muted">—</span>'}</td>
+          <td style="color:var(--red-800);font-weight:700;font-size:14px">${fmtMoney(total)}</td>
+          <td>${owner?.phone||'—'}</td>
+        </tr>`;
+      });
+    totalTabHtml = `
+      <table>
+        <thead><tr>
+          <th>Perro</th><th>Dueño/a</th>
+          <th style="color:var(--red-800)">Moroso</th>
+          <th style="color:var(--amber-800)">Pendiente activo</th>
+          <th>Deuda total</th><th>Teléfono</th>
+        </tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+      <div style="text-align:right;font-weight:700;font-size:13px;color:var(--red-800);
+                  padding:8px 14px;border-top:2px solid var(--red-200);margin-top:0">
+        DEUDA TOTAL ACUMULADA: ${fmtMoney(grandTotal)}
+      </div>`;
+  } else {
+    totalTabHtml = '<div class="empty-state"><div class="empty-icon">✅</div><p>Sin deudas registradas.</p></div>';
+  }
+  document.getElementById('income-total-wrap').innerHTML = totalTabHtml;
 }
 
 // ===================== SALIDAS =====================
