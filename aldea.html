@@ -11994,12 +11994,26 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
       const dog = DB.getDog(d.dog_id);
       list.push({ concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(d.advance_paid), nota: '' });
     });
-    // Adelantos de reservas solo pendientes (las activas ya tienen pago en DB.payments del stay)
-    (DB.reservas || []).filter(r => r.status === 'pendiente' && r.advance_payments?.length).forEach(r => {
+    // Adelantos de reservas — todos los estados (pendiente, activa, caída), fecha = fecha del adelanto
+    (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
       const dog = DB.getDog(r.dog_id);
-      (r.advance_payments || []).filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
-        list.push({ concepto: r.type === 'hospedaje' ? 'Adelanto reserva hospedaje (pendiente)' : 'Adelanto reserva daycare (pendiente)', fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: 'reserva aún no activada' });
-      });
+      const statusLabel = r.status === 'activa' ? 'activada' : r.status === 'caida' ? 'caída' : 'pendiente';
+      const concepto = (r.type === 'hospedaje' ? 'Adelanto reserva hospedaje' : 'Adelanto reserva daycare') + ` (${statusLabel})`;
+      // Floating payments (migrated to DB.payments)
+      const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+      if (floating.length) {
+        floating.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
+          list.push({ concepto, fecha: p.date, perro: dog?.name||'?', dueno: dog?.owner_last_name||'?', amount: parseFloat(p.amount), nota: p.note||'' });
+        });
+      } else if (r.advance_payments?.length) {
+        r.advance_payments.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
+          list.push({ concepto, fecha: p.date, perro: dog?.name||'?', dueno: dog?.owner_last_name||'?', amount: parseFloat(p.amount), nota: '' });
+        });
+      } else if (parseFloat(r.advance_amount) > 0) {
+        const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+        if (advDate && inRange(advDate))
+          list.push({ concepto, fecha: advDate, perro: dog?.name||'?', dueno: dog?.owner_last_name||'?', amount: parseFloat(r.advance_amount), nota: '' });
+      }
     });
     return list.sort((a, b) => a.fecha.localeCompare(b.fecha));
   })();
@@ -12023,11 +12037,16 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const iRest     = DB.restaurant.filter(r => inRangeI(r.date));
     const iPendRes  = DB.reservas.filter(r => r.status==='pendiente');
 
-    const paymentsInPeriod = DB.payments.filter(p => inRangeI(p.date) && iStays.some(s => s.id === p.stay_id));
+    const iStaysAll        = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado');
+    const paymentsInPeriod = DB.payments.filter(p => inRangeI(p.date) && iStaysAll.some(s => s.id === p.stay_id));
     const totalCobradoHosp = paymentsInPeriod.reduce((s,p)=>s+parseFloat(p.amount),0);
-    const dcCobrado        = iDcs.reduce((s,d)=>s+calcDaycareTotal(d),0);
-    const restCobrado      = iRest.filter(r=>r.paid&&inRangeI(r.paid_date||r.date)).reduce((s,r)=>s+r.total,0);
-    const resWithAdv       = DB.reservas.filter(r=>r.status!=='activa'&&_reservaAdvanceTotal(r)>0);
+    const dcCobrado        = iDcs.reduce((s,d)=>s+getDcPaidAmount(d),0);
+    const restCobrado      = DB.restaurant.filter(r=>r.paid&&inRangeI(r.paid_date||r.date)).reduce((s,r)=>s+r.total,0);
+    const resWithAdv       = DB.reservas.filter(r => {
+      if (!(_reservaAdvanceTotal(r) > 0)) return false;
+      const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+      return advDate && inRangeI(advDate);
+    });
     const totalResAdv      = resWithAdv.reduce((s,r)=>s+_reservaAdvanceTotal(r),0);
     const totalPagadoI     = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
 
@@ -12417,8 +12436,14 @@ function buildExportData(from, to) {
   const dogIds = [...new Set([...stays.map(s=>s.dog_id), ...dcs.map(d=>d.dog_id), ...rests.map(r=>r.dog_id)])];
   const dogs   = dogIds.map(id => DB.getDog(id)).filter(Boolean);
 
+  const resAdvTotal    = (DB.reservas || []).filter(r => {
+    if (!(_reservaAdvanceTotal(r) > 0)) return false;
+    const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+    return advDate && inRange(advDate);
+  }).reduce((s,r) => s + _reservaAdvanceTotal(r), 0);
   const totalIncome    = stays.reduce((s, st) => s + getPaidAmount(st.id), 0)
-                       + rests.filter(r=>r.paid).reduce((s,r)=>s+r.total,0);
+                       + rests.filter(r=>r.paid).reduce((s,r)=>s+r.total,0)
+                       + resAdvTotal;
   const totalPending   = stays.reduce((s, st) => s + getPendingAmount(st), 0)
                        + rests.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0);
   const totalProjected = stays.reduce((s, st) => s + calcStayTotal(st), 0);
@@ -12429,9 +12454,20 @@ function buildExportData(from, to) {
   const advDcs = DB.daycares
     .filter(d => (d.advance_paid || 0) > 0 && inRange(d.date))
     .map(d => { const dog = DB.getDog(d.dog_id); return { concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', amount: d.advance_paid }; });
-  const advRes = (DB.reservas || [])
-    .filter(r => r.status === 'pendiente' && r.advance_payments?.length)
-    .flatMap(r => (r.advance_payments || []).filter(p => inRange(p.date) && p.amount > 0).map(p => { const dog = DB.getDog(r.dog_id); return { concepto: r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare', fecha: p.date, perro: dog?.name || '?', amount: p.amount }; }));
+  // Adelantos de reservas — todos los estados (pendiente, activa, caída), fecha = fecha del adelanto
+  const advRes = (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0).flatMap(r => {
+    const dog = DB.getDog(r.dog_id);
+    const statusLabel = r.status === 'activa' ? 'activada' : r.status === 'caida' ? 'caída' : 'pendiente';
+    const concepto = (r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare') + ` (${statusLabel})`;
+    const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+    if (floating.length) return floating.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).map(p => ({ concepto, fecha: p.date, perro: dog?.name||'?', amount: parseFloat(p.amount) }));
+    if (r.advance_payments?.length) return r.advance_payments.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).map(p => ({ concepto, fecha: p.date, perro: dog?.name||'?', amount: parseFloat(p.amount) }));
+    if (parseFloat(r.advance_amount) > 0) {
+      const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+      if (advDate && inRange(advDate)) return [{ concepto, fecha: advDate, perro: dog?.name||'?', amount: parseFloat(r.advance_amount) }];
+    }
+    return [];
+  });
   const advances = [...advStays, ...advDcs, ...advRes].sort((a, b) => a.fecha.localeCompare(b.fecha));
 
   return { from, to, stays, dcs, incs, vacs, fdShifts, phShifts, dogs, rests, totalIncome, totalPending, totalProjected, advances };
@@ -12663,13 +12699,34 @@ function exportData(format) {
     })
   ]));
 
-  // 4. Ingresos (todos los pagos del período)
+  // 4. Ingresos (todos los pagos del período + adelantos de reservas)
   const allPayments = DB.payments.filter(p => {
     const s = DB.stays.find(st => st.id === p.stay_id);
     return s && ((!from||p.date>=from) && (!to||p.date<=to));
   });
+  const xlResAdv = (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0).flatMap(r => {
+    const dog = DB.getDog(r.dog_id);
+    const statusLabel = r.status === 'activa' ? 'activada' : r.status === 'caida' ? 'caída' : 'pendiente';
+    const concepto = (r.type === 'hospedaje' ? 'Adelanto reserva hosp.' : 'Adelanto reserva dc') + ` (${statusLabel})`;
+    const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+    const rows = [];
+    if (floating.length) {
+      floating.filter(p => (!from||p.date>=from) && (!to||p.date<=to) && parseFloat(p.amount)>0).forEach(p => {
+        rows.push(xlRow(xlCell(p.date), xlCell(dog?.name||'?'), xlCell(parseFloat(p.amount),'Number'), xlCell(concepto), xlCell(''), xlCell(p.note||'')));
+      });
+    } else if (r.advance_payments?.length) {
+      r.advance_payments.filter(p => (!from||p.date>=from) && (!to||p.date<=to) && parseFloat(p.amount)>0).forEach(p => {
+        rows.push(xlRow(xlCell(p.date), xlCell(dog?.name||'?'), xlCell(parseFloat(p.amount),'Number'), xlCell(concepto), xlCell(''), xlCell('')));
+      });
+    } else if (parseFloat(r.advance_amount) > 0) {
+      const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+      if (advDate && (!from||advDate>=from) && (!to||advDate<=to))
+        rows.push(xlRow(xlCell(advDate), xlCell(dog?.name||'?'), xlCell(parseFloat(r.advance_amount),'Number'), xlCell(concepto), xlCell(''), xlCell('')));
+    }
+    return rows;
+  });
   sheets.push(xlSheet('Ingresos', [
-    xlHeader('Fecha pago','Perro','Monto','Estadía ingreso','Estadía salida','Notas'),
+    xlHeader('Fecha pago','Perro','Monto','Concepto / Estadía ingreso','Estadía salida','Notas'),
     ...allPayments.map(p => {
       const s = DB.stays.find(st => st.id === p.stay_id);
       const dog = s ? DB.getDog(s.dog_id) : null;
@@ -12678,7 +12735,8 @@ function exportData(format) {
         xlCell(parseFloat(p.amount||0),'Number'),
         xlCell(s?.check_in_date||''), xlCell(s?.check_out_date||''), xlCell(p.note||'')
       );
-    })
+    }),
+    ...xlResAdv
   ]));
 
   // 5. Cobros y deudas
