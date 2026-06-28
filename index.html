@@ -5538,7 +5538,7 @@ function saveDcPayment(dcId) {
   pmts.push({ id: DB.nextId(pmts), stay_id: dcId, amount, date, note: notes || '', registered_by_ct_id: regCtId });
   DB.savePayments(pmts);
   closeModal('modal-dc-pay');
-  renderIncome();
+  _globalRefreshFinancial();
 }
 
 let paymentStayId = null;
@@ -5612,6 +5612,21 @@ function renderPaymentHistory(stayId) {
       </div>`).join('');
 }
 
+// Re-renderiza todos los módulos que dependen de datos financieros.
+// Llamar después de cualquier operación que modifique pagos, deudas o cobros.
+function _globalRefreshFinancial() {
+  renderIncome();
+  renderDashboard();
+  const activeId = document.querySelector('.page.active')?.id?.replace('page-', '');
+  if (activeId === 'stays')    renderStaysTable();
+  if (activeId === 'daycare')  renderDaycareTable();
+  if (activeId === 'morosos')  renderMorosos();
+  if (activeId === 'salidas')  renderSalidasPage();
+  if (activeId === 'reservas') renderReservasPage();
+  if (activeId === 'daily')    renderDaily();
+  if (activeId === 'dogs')     renderDogsTable();
+}
+
 function savePayments() {
   const payRegCt = parseInt(document.getElementById('pay-reg-ct').value);
   if (!payRegCt) { alert('Seleccioná la cuidadora que registra.'); return; }
@@ -5631,8 +5646,7 @@ function savePayments() {
   toSave.forEach(p => payments.push({ id: DB.nextId(payments), stay_id: paymentStayId, registered_by_ct_id: payRegCt, ...p }));
   DB.savePayments(payments);
   openPaymentModal(paymentStayId);
-  renderStaysTable();
-  renderIncome();
+  _globalRefreshFinancial();
 }
 
 function deletePayment(id) {
@@ -5640,8 +5654,7 @@ function deletePayment(id) {
   DB.savePayments(DB.payments.filter(p => p.id !== id));
   _refreshPaymentInfo();
   renderPaymentHistory(paymentStayId);
-  renderStaysTable();
-  renderIncome();
+  _globalRefreshFinancial();
 }
 
 function statusBadge(s) {
@@ -8687,11 +8700,7 @@ function savePickup() {
 
   closeModal('modal-pickup');
   renderSalidasPage();
-  renderDashboard();
-  renderDaily();
-  renderMorosos();
-  const staysPage = document.getElementById('page-stays');
-  if (staysPage?.classList.contains('active')) renderStaysTable();
+  _globalRefreshFinancial();
 }
 
 function renderSalidasHistory() {
@@ -11249,6 +11258,7 @@ function markRestPaid(id) {
   recs[i].paid_date = today();
   DB.saveRestaurant(recs);
   renderRestaurantPage();
+  _globalRefreshFinancial();
 }
 
 function markRestUnpaid(id) {
@@ -11259,6 +11269,7 @@ function markRestUnpaid(id) {
   recs[i].paid_date = null;
   DB.saveRestaurant(recs);
   renderRestaurantPage();
+  _globalRefreshFinancial();
 }
 
 function deleteRestaurant(id) {
