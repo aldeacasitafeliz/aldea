@@ -7339,9 +7339,9 @@ function renderIncome() {
     return inRange(r.date);
   };
   const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r));
-  // Adelantos cobrados de reservas no activadas — filtrar por fecha del adelanto (dinero recibido)
+  // Adelantos cobrados de reservas — filtrar por fecha del adelanto (dinero recibido, sin importar estado)
   const resWithAdv = DB.reservas.filter(r => {
-    if (r.status === 'activa' || !(_reservaAdvanceTotal(r) > 0)) return false;
+    if (!(_reservaAdvanceTotal(r) > 0)) return false;
     const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
     return advDate && inRange(advDate);
   });
@@ -7991,7 +7991,7 @@ function renderIncome() {
         amount: r.total, dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
         actions: `<button class="btn btn-secondary btn-sm" onclick="openRestaurantModal(${r.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${r.id});renderIncome()">✕</button>` };
     }),
-    ...DB.reservas.filter(r => r.status !== 'activa' && _reservaAdvanceTotal(r) > 0).flatMap(r => {
+    ...DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).flatMap(r => {
       const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
       if (!advDate || !cbdInRange(advDate)) return [];
       const dog = DB.getDog(r.dog_id);
