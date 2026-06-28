@@ -7344,13 +7344,19 @@ function renderIncome() {
     return inRange(r.date);
   };
   const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r));
-  // Adelantos cobrados de reservas — filtrar por fecha del adelanto (dinero recibido, sin importar estado)
-  const resWithAdv = DB.reservas.filter(r => {
-    if (!(_reservaAdvanceTotal(r) > 0)) return false;
-    const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
-    return advDate && inRange(advDate);
+  // Adelantos cobrados de reservas — suma por pago individual con su propia fecha
+  let totalResAdv = 0;
+  DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+    const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+    if (floating.length) {
+      totalResAdv += floating.filter(p => inRange(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+    } else if (r.advance_payments?.length) {
+      totalResAdv += r.advance_payments.filter(p => inRange(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+    } else if (parseFloat(r.advance_amount) > 0) {
+      const advDate = r.advance_date || r.created_at?.slice(0,10) || '';
+      if (advDate && inRange(advDate)) totalResAdv += parseFloat(r.advance_amount);
+    }
   });
-  const totalResAdv = resWithAdv.reduce((s,r) => s + _reservaAdvanceTotal(r), 0);
 
   // Cobrado = dinero recibido en el período (fecha del pago/cobro, no del servicio)
   const paymentsInPeriod  = DB.payments.filter(p => inRange(p.date) && allStaysRaw.some(s => s.id === p.stay_id));
@@ -7997,14 +8003,21 @@ function renderIncome() {
         actions: `<button class="btn btn-secondary btn-sm" onclick="openRestaurantModal(${r.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${r.id});renderIncome()">✕</button>` };
     }),
     ...DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).flatMap(r => {
-      const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
-      if (!advDate || !cbdInRange(advDate)) return [];
       const dog = DB.getDog(r.dog_id);
-      return [{ dog_id: r.dog_id, date: advDate, tipo: 'Adelanto reserva', _type: 'rest', refId: r.id,
+      const mk = (date, amount) => ({ dog_id: r.dog_id, date, tipo: 'Adelanto reserva', _type: 'rest', refId: r.id,
         servicio: `Reserva ${r.type||''} ${fmtDate(r.reserved_from||r.date||'')}`,
-        nota: 'Adelanto al registro', amount: _reservaAdvanceTotal(r),
-        dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
-        actions: '' }];
+        nota: 'Adelanto al registro', amount,
+        dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`, actions: '' });
+      const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+      if (floating.length)
+        return floating.filter(p => cbdInRange(p.date) && parseFloat(p.amount)>0).map(p => mk(p.date, parseFloat(p.amount)));
+      if (r.advance_payments?.length)
+        return r.advance_payments.filter(p => cbdInRange(p.date) && parseFloat(p.amount)>0).map(p => mk(p.date, parseFloat(p.amount)));
+      if (parseFloat(r.advance_amount) > 0) {
+        const advDate = r.advance_date || r.created_at?.slice(0,10) || '';
+        if (advDate && cbdInRange(advDate)) return [mk(advDate, parseFloat(r.advance_amount))];
+      }
+      return [];
     })
   ].sort((a,b) => b.date.localeCompare(a.date));
 
@@ -12042,12 +12055,18 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const totalCobradoHosp = paymentsInPeriod.reduce((s,p)=>s+parseFloat(p.amount),0);
     const dcCobrado        = iDcs.reduce((s,d)=>s+getDcPaidAmount(d),0);
     const restCobrado      = DB.restaurant.filter(r=>r.paid&&inRangeI(r.paid_date||r.date)).reduce((s,r)=>s+r.total,0);
-    const resWithAdv       = DB.reservas.filter(r => {
-      if (!(_reservaAdvanceTotal(r) > 0)) return false;
-      const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
-      return advDate && inRangeI(advDate);
+    let totalResAdv = 0;
+    DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+      const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+      if (floating.length) {
+        totalResAdv += floating.filter(p => inRangeI(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+      } else if (r.advance_payments?.length) {
+        totalResAdv += r.advance_payments.filter(p => inRangeI(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+      } else if (parseFloat(r.advance_amount) > 0) {
+        const advDate = r.advance_date || r.created_at?.slice(0,10) || '';
+        if (advDate && inRangeI(advDate)) totalResAdv += parseFloat(r.advance_amount);
+      }
     });
-    const totalResAdv      = resWithAdv.reduce((s,r)=>s+_reservaAdvanceTotal(r),0);
     const totalPagadoI     = totalCobradoHosp + dcCobrado + restCobrado + totalResAdv;
 
     const iStaysGlobal   = _reportStays().filter(s=>s.service_type==='hospedaje'&&s.status!=='cancelado');
@@ -12436,11 +12455,18 @@ function buildExportData(from, to) {
   const dogIds = [...new Set([...stays.map(s=>s.dog_id), ...dcs.map(d=>d.dog_id), ...rests.map(r=>r.dog_id)])];
   const dogs   = dogIds.map(id => DB.getDog(id)).filter(Boolean);
 
-  const resAdvTotal    = (DB.reservas || []).filter(r => {
-    if (!(_reservaAdvanceTotal(r) > 0)) return false;
-    const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
-    return advDate && inRange(advDate);
-  }).reduce((s,r) => s + _reservaAdvanceTotal(r), 0);
+  let resAdvTotal = 0;
+  DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+    const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
+    if (floating.length) {
+      resAdvTotal += floating.filter(p => inRange(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+    } else if (r.advance_payments?.length) {
+      resAdvTotal += r.advance_payments.filter(p => inRange(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+    } else if (parseFloat(r.advance_amount) > 0) {
+      const advDate = r.advance_date || r.created_at?.slice(0,10) || '';
+      if (advDate && inRange(advDate)) resAdvTotal += parseFloat(r.advance_amount);
+    }
+  });
   const totalIncome    = stays.reduce((s, st) => s + getPaidAmount(st.id), 0)
                        + rests.filter(r=>r.paid).reduce((s,r)=>s+r.total,0)
                        + resAdvTotal;
