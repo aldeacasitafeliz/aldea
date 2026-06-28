@@ -2683,7 +2683,12 @@ function getPaidAmount(stayId) {
   return DB.payments.filter(p => p.stay_id === stayId).reduce((s,p) => s + parseFloat(p.amount), 0);
 }
 function getPendingAmount(stay) {
-  return Math.max(0, calcStayTotal(stay) - getPaidAmount(stay.id));
+  let reservaAdv = 0;
+  if (stay.from_reserva_id) {
+    const res = DB.reservas.find(r => r.id === stay.from_reserva_id);
+    if (res) reservaAdv = _reservaAdvanceTotal(res);
+  }
+  return Math.max(0, calcStayTotal(stay) - getPaidAmount(stay.id) - reservaAdv);
 }
 function getDcPaidAmount(dc) {
   return getPaidAmount(dc.id) + (parseFloat(dc.advance_paid) || 0);
