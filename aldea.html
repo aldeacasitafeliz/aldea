@@ -7364,7 +7364,12 @@ function renderIncome() {
   const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && allStaysRaw.some(s => s.id === p.stay_id));
   const totalCobradoHosp  = paymentsInPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
   const totalFueraPeriodo = paymentsOutPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
-  const dcCobrado   = allDcs.reduce((s,d) => s + getDcPaidAmount(d), 0);
+  // dcCobrado: pagos registrados por fecha de pago + advance_paid por fecha de servicio (proxy)
+  const dcPmtsCobrado = DB.payments.filter(p => inRange(p.date) && allDcsRaw.some(d => d.id === p.stay_id))
+                                    .reduce((s,p) => s + parseFloat(p.amount), 0);
+  const dcAdvCobrado  = allDcsRaw.filter(d => inRange(d.date) && parseFloat(d.advance_paid) > 0)
+                                  .reduce((s,d) => s + parseFloat(d.advance_paid), 0);
+  const dcCobrado     = dcPmtsCobrado + dcAdvCobrado;
   const restCobrado = DB.restaurant.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
 
   const totalResProyectado = pendingRes.reduce((s,r) => s + calcReservaTotal(r), 0);
@@ -7989,11 +7994,21 @@ function renderIncome() {
         dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
         actions: `<button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">✕</button>` };
     }),
-    ..._reportDaycares().filter(d => cbdInRange(d.date) && getDcPaidAmount(d) > 0).map(d => {
+    // Daycare: pagos registrados individualmente (fecha de pago real)
+    ...DB.payments.filter(p => cbdInRange(p.date) && _reportDaycares().some(d => d.id === p.stay_id)).map(p => {
+      const dc  = DB.daycares.find(d => d.id === p.stay_id);
+      const dog = dc ? DB.getDog(dc.dog_id) : null;
+      return { dog_id: dc?.dog_id, date: p.date, tipo: 'Daycare', _type: 'dc', refId: dc?.id,
+        servicio: dc ? `Daycare ${fmtDate(dc.date)}` : '—', nota: p.note||'',
+        amount: parseFloat(p.amount), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        actions: dc ? `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${dc.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${dc.id});renderIncome()">✕</button>` : '' };
+    }),
+    // Daycare: adelanto registrado al crear (fecha del servicio como proxy de pago)
+    ..._reportDaycares().filter(d => cbdInRange(d.date) && parseFloat(d.advance_paid) > 0).map(d => {
       const dog = DB.getDog(d.dog_id);
       return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
         servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
-        amount: getDcPaidAmount(d), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
+        amount: parseFloat(d.advance_paid), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
         actions: `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${d.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${d.id});renderIncome()">✕</button>` };
     }),
     ...DB.restaurant.filter(r => r.paid && cbdInRange(r.paid_date||r.date)).map(r => {
@@ -12053,7 +12068,11 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const iStaysAll        = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado');
     const paymentsInPeriod = DB.payments.filter(p => inRangeI(p.date) && iStaysAll.some(s => s.id === p.stay_id));
     const totalCobradoHosp = paymentsInPeriod.reduce((s,p)=>s+parseFloat(p.amount),0);
-    const dcCobrado        = iDcs.reduce((s,d)=>s+getDcPaidAmount(d),0);
+    const iDcsRaw = _reportDaycares();
+    const dcCobrado = DB.payments.filter(p => inRangeI(p.date) && iDcsRaw.some(d => d.id === p.stay_id))
+                                  .reduce((s,p) => s + parseFloat(p.amount), 0)
+                    + iDcsRaw.filter(d => inRangeI(d.date) && parseFloat(d.advance_paid) > 0)
+                             .reduce((s,d) => s + parseFloat(d.advance_paid), 0);
     const restCobrado      = DB.restaurant.filter(r=>r.paid&&inRangeI(r.paid_date||r.date)).reduce((s,r)=>s+r.total,0);
     let totalResAdv = 0;
     DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
@@ -12467,9 +12486,14 @@ function buildExportData(from, to) {
       if (advDate && inRange(advDate)) resAdvTotal += parseFloat(r.advance_amount);
     }
   });
+  const allDcsForExport = _reportDaycares();
+  const dcExportPmts  = DB.payments.filter(p => inRange(p.date) && allDcsForExport.some(d => d.id === p.stay_id))
+                                    .reduce((s,p) => s + parseFloat(p.amount), 0);
+  const dcExportAdv   = dcs.filter(d => parseFloat(d.advance_paid) > 0)
+                           .reduce((s,d) => s + parseFloat(d.advance_paid), 0);
   const totalIncome    = stays.reduce((s, st) => s + getPaidAmount(st.id), 0)
                        + rests.filter(r=>r.paid).reduce((s,r)=>s+r.total,0)
-                       + resAdvTotal;
+                       + resAdvTotal + dcExportPmts + dcExportAdv;
   const totalPending   = stays.reduce((s, st) => s + getPendingAmount(st), 0)
                        + rests.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0);
   const totalProjected = stays.reduce((s, st) => s + calcStayTotal(st), 0);
