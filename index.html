@@ -2686,7 +2686,8 @@ function getPendingAmount(stay) {
   let reservaAdv = 0;
   if (stay.from_reserva_id) {
     const res = DB.reservas.find(r => r.id === stay.from_reserva_id);
-    if (res) reservaAdv = _reservaAdvanceTotal(res);
+    // Only deduct if advance is NOT already in DB.payments with stay_id (getPaidAmount already counts those)
+    if (res && !_reservaAdvanceLinkedToStay(res)) reservaAdv = _reservaAdvanceTotal(res);
   }
   return Math.max(0, calcStayTotal(stay) - getPaidAmount(stay.id) - reservaAdv);
 }
@@ -7344,9 +7345,9 @@ function renderIncome() {
     return inRange(r.date);
   };
   const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r));
-  // Adelantos cobrados de reservas — suma por pago individual con su propia fecha
+  // Adelantos cobrados de reservas — suma por pago individual, solo si no están ya en paymentsInPeriod
   let totalResAdv = 0;
-  DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+  DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
     const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
     if (floating.length) {
       totalResAdv += floating.filter(p => inRange(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
@@ -8002,7 +8003,7 @@ function renderIncome() {
         amount: r.total, dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
         actions: `<button class="btn btn-secondary btn-sm" onclick="openRestaurantModal(${r.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteRestaurant(${r.id});renderIncome()">✕</button>` };
     }),
-    ...DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).flatMap(r => {
+    ...DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).flatMap(r => {
       const dog = DB.getDog(r.dog_id);
       const mk = (date, amount) => ({ dog_id: r.dog_id, date, tipo: 'Adelanto reserva', _type: 'rest', refId: r.id,
         servicio: `Reserva ${r.type||''} ${fmtDate(r.reserved_from||r.date||'')}`,
@@ -12007,12 +12008,11 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
       const dog = DB.getDog(d.dog_id);
       list.push({ concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(d.advance_paid), nota: '' });
     });
-    // Adelantos de reservas — todos los estados (pendiente, activa, caída), fecha = fecha del adelanto
-    (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+    // Adelantos de reservas — todos los estados; si está vinculado a estadía, aparece como pago de hospedaje
+    (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
       const dog = DB.getDog(r.dog_id);
       const statusLabel = r.status === 'activa' ? 'activada' : r.status === 'caida' ? 'caída' : 'pendiente';
       const concepto = (r.type === 'hospedaje' ? 'Adelanto reserva hospedaje' : 'Adelanto reserva daycare') + ` (${statusLabel})`;
-      // Floating payments (migrated to DB.payments)
       const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
       if (floating.length) {
         floating.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
@@ -12023,7 +12023,7 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
           list.push({ concepto, fecha: p.date, perro: dog?.name||'?', dueno: dog?.owner_last_name||'?', amount: parseFloat(p.amount), nota: '' });
         });
       } else if (parseFloat(r.advance_amount) > 0) {
-        const advDate = r.advance_date || r.created_at?.slice(0,10) || r.reserved_from || r.date || '';
+        const advDate = r.advance_date || r.created_at?.slice(0,10) || '';
         if (advDate && inRange(advDate))
           list.push({ concepto, fecha: advDate, perro: dog?.name||'?', dueno: dog?.owner_last_name||'?', amount: parseFloat(r.advance_amount), nota: '' });
       }
@@ -12056,7 +12056,7 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const dcCobrado        = iDcs.reduce((s,d)=>s+getDcPaidAmount(d),0);
     const restCobrado      = DB.restaurant.filter(r=>r.paid&&inRangeI(r.paid_date||r.date)).reduce((s,r)=>s+r.total,0);
     let totalResAdv = 0;
-    DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+    DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
       const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
       if (floating.length) {
         totalResAdv += floating.filter(p => inRangeI(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
@@ -12456,7 +12456,7 @@ function buildExportData(from, to) {
   const dogs   = dogIds.map(id => DB.getDog(id)).filter(Boolean);
 
   let resAdvTotal = 0;
-  DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0).forEach(r => {
+  DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
     const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
     if (floating.length) {
       resAdvTotal += floating.filter(p => inRange(p.date)).reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
@@ -12480,8 +12480,8 @@ function buildExportData(from, to) {
   const advDcs = DB.daycares
     .filter(d => (d.advance_paid || 0) > 0 && inRange(d.date))
     .map(d => { const dog = DB.getDog(d.dog_id); return { concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', amount: d.advance_paid }; });
-  // Adelantos de reservas — todos los estados (pendiente, activa, caída), fecha = fecha del adelanto
-  const advRes = (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0).flatMap(r => {
+  // Adelantos de reservas — solo los no vinculados a estadía (los vinculados ya están en allPayments)
+  const advRes = (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).flatMap(r => {
     const dog = DB.getDog(r.dog_id);
     const statusLabel = r.status === 'activa' ? 'activada' : r.status === 'caida' ? 'caída' : 'pendiente';
     const concepto = (r.type === 'hospedaje' ? 'Pago adelantado reserva hospedaje' : 'Pago adelantado reserva daycare') + ` (${statusLabel})`;
@@ -13834,12 +13834,16 @@ function calcReservaTotal(r) {
 
 function _reservaAdvanceTotal(r) {
   if (!r) return 0;
-  // If payments were already migrated (floating: from_reserva_id set, stay_id null), use those
-  const floating = DB.payments.filter(p => p.from_reserva_id === r.id && !p.stay_id);
-  if (floating.length) return floating.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
-  // Otherwise fall back to reserva's own advance data
+  // All DB.payments from this reserva (floating or already linked to a stay)
+  const all = DB.payments.filter(p => p.from_reserva_id === r.id);
+  if (all.length) return all.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
+  // Legacy: stored in reserva object (not yet migrated to DB.payments)
   if (r.advance_payments?.length) return r.advance_payments.reduce((s,p) => s + (parseFloat(p.amount)||0), 0);
   return parseFloat(r.advance_amount) || 0;
+}
+// True when the advance has been migrated to DB.payments WITH a stay_id (already in getPaidAmount)
+function _reservaAdvanceLinkedToStay(r) {
+  return !!r && DB.payments.some(p => p.from_reserva_id === r.id && p.stay_id);
 }
 
 function setReservaStatus(id, newStatus) {
