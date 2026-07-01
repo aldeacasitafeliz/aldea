@@ -2776,8 +2776,8 @@ function getHostedDogs(date) {
     if (s.service_type !== 'hospedaje' || s.status === 'cancelado' || s.status === 'finalizado') return false;
     if (s.pickup_time) return false;
     if (s.open_ended) return s.check_in_date <= date;
-    // Include overdue stays (checkout passed but no pickup confirmed)
-    return s.check_in_date <= date && (s.check_out_date > date || !s.pickup_time);
+    // Sleeping tonight or overdue — explicitly exclude dogs leaving today (those appear in getLeavingDogs)
+    return s.check_in_date <= date && s.check_out_date !== date;
   });
 }
 function getOpenEndedStays() {
