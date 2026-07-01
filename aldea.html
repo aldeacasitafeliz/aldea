@@ -4040,13 +4040,14 @@ function renderDogsTable() {
 
   el.innerHTML = `<table>
     <thead><tr>
+      <th style="text-align:center;width:36px">#</th>
       <th>Nombre</th><th>Dueño</th><th>Sexo</th><th>Tamaño</th><th>Comportamiento</th>
       <th>Primer ingreso</th><th>Última actividad</th>
       <th style="text-align:center" title="Total hospedajes">Hosp.</th>
       <th style="text-align:center" title="Total daycares">Day.</th>
       <th>Cuidados</th><th></th>
     </tr></thead>
-    <tbody>${dogs.map(d => {
+    <tbody>${dogs.map((d, idx) => {
       const dogStays = allStays.filter(s => s.dog_id === d.id && s.status !== 'cancelado');
       const dogDcs   = allDcs.filter(dc => dc.dog_id === d.id);
 
@@ -4076,6 +4077,7 @@ function renderDogsTable() {
       const rowBg = isAgg ? 'background:var(--red-50)' : '';
 
       return `<tr style="${rowBg}">
+        <td style="text-align:center;color:var(--text-muted);font-size:12px;font-weight:500">${idx+1}</td>
         <td>
           <button onclick="viewDog(${d.id})" style="background:none;border:none;cursor:pointer;text-align:left;padding:0;font:inherit;font-weight:700;color:${isAgg?'var(--red-800)':'var(--text)'}">
             ${d.name}
