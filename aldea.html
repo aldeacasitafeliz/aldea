@@ -140,6 +140,7 @@ tr:hover td { background: var(--gray-50); }
 .vg-cell.hosted { background: var(--green-200); }
 .vg-cell.checkout { background: var(--coral-50); border: 1px solid var(--coral-400); }
 .vg-cell.daycare { background: var(--blue-50); border: 1px solid var(--blue-400); }
+.vg-cell.reserva { background: #fef9c3; border: 1px dashed #ca8a04; }
 
 /* UTILS */
 .flex { display: flex; }
@@ -817,6 +818,7 @@ tr:hover td { background: var(--gray-50); }
         <div class="legend-item"><div class="legend-dot" style="background:var(--green-200)"></div> Hospedado</div>
         <div class="legend-item"><div class="legend-dot" style="background:var(--coral-50);border:1px solid var(--coral-400)"></div> Salida</div>
         <div class="legend-item"><div class="legend-dot" style="background:var(--blue-50);border:1px solid var(--blue-400)"></div> Daycare</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fef9c3;border:1px dashed #ca8a04"></div> Reserva pendiente</div>
       </div>
       <div id="cal-content"></div>
     </div>
@@ -6587,26 +6589,40 @@ function renderCalendar() {
 
   const allStays = DB.stays.filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allDaycares = DB.daycares;
+  const allReservas = DB.reservas.filter(r => r.status === 'pendiente');
   const dogs = DB.dogs.sort((a,b) => a.name.localeCompare(b.name));
+  const first = days[0], last = days[days.length-1];
 
   const relevantDogs = dogs.filter(dog => {
-    const hasStay = allStays.some(s => s.dog_id === dog.id && s.check_in_date <= days[days.length-1] && s.check_out_date >= days[0]);
-    const hasDc = allDaycares.some(d => d.dog_id === dog.id && d.date >= days[0] && d.date <= days[days.length-1]);
-    return hasStay || hasDc;
+    const hasStay = allStays.some(s => s.dog_id === dog.id && s.check_in_date <= last && s.check_out_date >= first);
+    const hasDc   = allDaycares.some(d => d.dog_id === dog.id && d.date >= first && d.date <= last);
+    const hasRes  = allReservas.some(r => {
+      if (r.dog_id !== dog.id) return false;
+      if (r.type === 'hospedaje') return r.reserved_from <= last && (r.open_ended || !r.check_out_date || r.check_out_date >= first);
+      return r.date >= first && r.date <= last;
+    });
+    return hasStay || hasDc || hasRes;
   });
 
   const dayLabels = days.map(d => parseInt(d.slice(8))).map(d => `<div class="vg-day-head">${d}</div>`).join('');
 
   const rows = relevantDogs.map(dog => {
     const cells = days.map(d => {
-      const isHosted = allStays.some(s => s.dog_id === dog.id && s.check_in_date <= d && s.check_out_date > d);
+      const isHosted  = allStays.some(s => s.dog_id === dog.id && s.check_in_date <= d && s.check_out_date > d);
       const isLeaving = allStays.some(s => s.dog_id === dog.id && s.check_out_date === d);
       const isDaycare = allDaycares.some(dc => dc.dog_id === dog.id && dc.date === d);
+      const isReserva = !isHosted && !isLeaving && !isDaycare && allReservas.some(r => {
+        if (r.dog_id !== dog.id) return false;
+        if (r.type === 'hospedaje') return r.reserved_from <= d && (r.open_ended || !r.check_out_date || r.check_out_date >= d);
+        return r.date === d;
+      });
       let cls = '';
       if (isLeaving) cls = 'checkout';
       else if (isHosted) cls = 'hosted';
       else if (isDaycare) cls = 'daycare';
-      return `<div class="vg-cell ${cls}" title="${d}"></div>`;
+      else if (isReserva) cls = 'reserva';
+      const label = isReserva ? 'Reserva pendiente' : d;
+      return `<div class="vg-cell ${cls}" title="${label}"></div>`;
     }).join('');
     return `<div class="vg-row">
       <div class="vg-dog-name">${dog.name} <span class="text-faint text-sm" style="margin-left:4px">${dog.owner_last_name}</span></div>
