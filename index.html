@@ -628,6 +628,90 @@ tr:hover td { background: var(--gray-50); }
   .wizard-step { display: block !important; }
   .wizard-progress { display: none !important; }
 }
+
+/* ═══════════ POLISH LAYER — solo estética, cero cambios de flujo ═══════════ */
+
+/* Tipografía más nítida */
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+/* Transición de página sutil */
+@keyframes pageIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.page.active { animation: pageIn 0.18s ease-out; }
+
+/* Tarjetas: profundidad consistente */
+.card { box-shadow: 0 1px 2px rgba(44,44,42,0.04), 0 1px 6px rgba(44,44,42,0.03); transition: box-shadow 0.2s; }
+.stat-card { border: 0.5px solid rgba(0,0,0,0.05); box-shadow: 0 1px 2px rgba(44,44,42,0.04); transition: transform 0.15s ease, box-shadow 0.15s ease; }
+.stat-card:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(44,44,42,0.08); }
+.stat-value { letter-spacing: -0.5px; }
+
+/* Botones: elevación al pasar y presión al hacer clic */
+.btn { transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s; }
+.btn:hover { box-shadow: 0 1px 4px rgba(44,44,42,0.12); }
+.btn:active { transform: scale(0.97); box-shadow: none; }
+.btn-primary { box-shadow: 0 1px 2px rgba(39,80,10,0.25); }
+.btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+.tab-btn:focus-visible, .nav-item:focus-visible {
+  outline: 2px solid var(--green-400); outline-offset: 2px;
+}
+
+/* Inputs: feedback al pasar el mouse */
+input:hover:not(:focus), select:hover:not(:focus), textarea:hover:not(:focus) { border-color: var(--gray-400); }
+
+/* Tablas: hover suave y cabecera más limpia */
+td { transition: background 0.12s; }
+th:first-child { border-top-left-radius: 8px; }
+th:last-child { border-top-right-radius: 8px; }
+
+/* Badges y chips: borde sutil para definición */
+.badge { border: 0.5px solid rgba(0,0,0,0.06); letter-spacing: 0.2px; }
+
+/* Modales: entrada animada, fondo con blur y sombra profunda */
+.modal-overlay { background: rgba(23,52,4,0.32); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+@keyframes modalIn { from { opacity: 0; transform: translateY(10px) scale(0.98); } to { opacity: 1; transform: none; } }
+.modal-overlay.open .modal { animation: modalIn 0.2s cubic-bezier(0.16,1,0.3,1); }
+.modal { box-shadow: 0 20px 50px rgba(23,52,4,0.2), 0 4px 14px rgba(0,0,0,0.08); border: none; }
+
+/* Sidebar: indicador de sección activa */
+.nav-item { position: relative; }
+.nav-item.active { box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 1px 3px rgba(0,0,0,0.2); font-weight: 600; }
+.nav-item.active::before { content: ''; position: absolute; left: -8px; top: 20%; bottom: 20%; width: 3px; background: var(--green-100); border-radius: 0 2px 2px 0; }
+
+/* Alertas: bordes redondeados consistentes */
+.alert { border-radius: var(--radius); box-shadow: 0 1px 2px rgba(0,0,0,0.03); }
+
+/* Tarjetas de lista diaria: elevación consistente */
+.dog-daily-card { box-shadow: 0 1px 2px rgba(44,44,42,0.04); }
+.dog-daily-card:hover { transform: translateY(-1px); }
+
+/* Calendario visual: celdas con transición */
+.vg-cell { transition: filter 0.12s; }
+.vg-cell.hosted:hover, .vg-cell.daycare:hover, .vg-cell.checkout:hover, .vg-cell.reserva:hover { filter: brightness(0.93); }
+
+/* Tabs: transición del indicador */
+.tab-btn { transition: color 0.15s, border-bottom-color 0.2s; }
+
+/* Scrollbars discretos (WebKit) */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gray-200); border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--gray-400); }
+.sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-color: var(--green-900); }
+
+/* Empty states más amables */
+.empty-state { padding: 48px 20px; }
+.empty-state .empty-icon { font-size: 40px; opacity: 0.35; }
+
+/* Móvil: evitar zoom de iOS al enfocar campos y targets táctiles cómodos */
+@media (max-width: 768px) {
+  input, select, textarea { font-size: 16px !important; }
+  .btn { min-height: 42px; }
+  .nav-item, .bn-item { min-height: 44px; }
+}
+
+/* Respeto a usuarios con movimiento reducido */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
 </style>
 </head>
 <body>
