@@ -2836,10 +2836,12 @@ function calcStayBaseTotal(stay) {
   return nights * rate + rate * 0.5 + holidaySurcharge;
 }
 function calcStayTotal(stay) {
-  if (stay.manual_total != null && stay.manual_total !== '') return parseFloat(stay.manual_total) || 0;
+  if (stay.manual_total != null && stay.manual_total !== '') return Math.round(parseFloat(stay.manual_total) || 0);
   const base = calcStayBaseTotal(stay);
   const discPct = parseFloat(stay.discount_pct) || 0;
-  return discPct > 0 ? base * (1 - discPct / 100) : base;
+  // Redondeo a soles enteros: el total mostrado, el cobrable y el interno
+  // deben ser siempre el mismo número (media tarifa y descuentos generan .5)
+  return Math.round(discPct > 0 ? base * (1 - discPct / 100) : base);
 }
 
 function calcDaycareBaseTotal(dc) {
@@ -2866,10 +2868,11 @@ function calcDaycareBaseTotal(dc) {
   return rate + (useHoliday ? HOLIDAY_SURCHARGE : 0);
 }
 function calcDaycareTotal(dc) {
-  if (dc.manual_total != null && dc.manual_total !== '') return parseFloat(dc.manual_total) || 0;
+  if (dc.manual_total != null && dc.manual_total !== '') return Math.round(parseFloat(dc.manual_total) || 0);
   const base = calcDaycareBaseTotal(dc);
   const discPct = parseFloat(dc.discount_pct) || 0;
-  return discPct > 0 ? base * (1 - discPct / 100) : base;
+  // Redondeo a soles enteros (misma política que calcStayTotal)
+  return Math.round(discPct > 0 ? base * (1 - discPct / 100) : base);
 }
 
 function getHostedDogs(date) {
@@ -7499,7 +7502,7 @@ function renderIncome() {
     if (r.type === 'hospedaje') return (!from || (r.check_out_date || r.reserved_from) >= from) && (!to || r.reserved_from <= to);
     return inRange(r.date);
   };
-  const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r));
+  const pendingRes = DB.reservas.filter(r => r.status === 'pendiente' && overlapsPeriodRes(r) && !_reservaMatchesExistingService(r));
   // Adelantos cobrados de reservas — suma por pago individual, solo si no están ya en paymentsInPeriod
   let totalResAdv = 0;
   DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
@@ -7534,7 +7537,7 @@ function renderIncome() {
   // Pendiente efectivo = hospedajes + restaurante (SIN reservas)
   const allStaysGlobal = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const allRestGlobal  = DB.restaurant;
-  const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente');
+  const allPendingRes  = DB.reservas.filter(r => r.status === 'pendiente' && !_reservaMatchesExistingService(r));
   const allDcsGlobal   = _reportDaycares();
 
   // ── Helpers de clasificación activo/moroso (usados en KPIs y en tabs) ──
@@ -7839,7 +7842,7 @@ function renderIncome() {
   // _isActiveStay, _restIsActive, morosoRest, pendRestAll ya definidos arriba en bloque KPI
   const pendStays = allStaysGlobal.filter(s => getPendingAmount(s) > 0 && _isActiveStay(s)).sort((a,b) => (a.check_out_date||'9999-12-31').localeCompare(b.check_out_date||'9999-12-31'));
   const pendRest  = pendRestAll.slice().sort((a,b) => a.date.localeCompare(b.date));
-  const pendResArr= DB.reservas.filter(r => r.status === 'pendiente' && Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)) > 0);
+  const pendResArr= DB.reservas.filter(r => r.status === 'pendiente' && !_reservaMatchesExistingService(r) && Math.max(0, calcReservaTotal(r) - _reservaAdvanceTotal(r)) > 0);
 
   const pendItems = [];
   pendStays.forEach(s => {
@@ -8882,7 +8885,9 @@ function renderSalidasHistory() {
               ? '<span class="chip" style="background:var(--amber-50);color:var(--amber-800)">Tarifa completa</span>'
               : '<span class="chip">Media tarifa</span>'}</td>
             <td><strong>${fmtMoney(total)}</strong></td>
-            <td style="color:${pend > 0 ? 'var(--red-800)' : 'var(--green-800)'};font-weight:${pend > 0 ? '600' : '400'}">${fmtMoney(pend)}</td>
+            <td style="color:${pend > 0 ? 'var(--red-800)' : 'var(--green-800)'};font-weight:${pend !== 0 ? '600' : '400'}">${
+              pend < 0 ? `S/ 0 <span class="chip" style="background:var(--teal-50);color:var(--teal-800)" title="El pago supera el total en ${fmtMoney(-pend)}">Sobrepago ${fmtMoney(-pend)}</span>` : fmtMoney(pend)
+            }</td>
             <td class="text-sm text-muted">${s.pickup_notes || '—'}</td>
             <td class="text-sm text-muted">${ct?.name || s.pickup_user || '—'}</td>
           </tr>`;
@@ -12205,7 +12210,7 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const iStays    = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado' && overlapsPeriodI(s));
     const iDcs      = _reportDaycares().filter(d => inRangeI(d.date));
     const iRest     = DB.restaurant.filter(r => inRangeI(r.date));
-    const iPendRes  = DB.reservas.filter(r => r.status==='pendiente');
+    const iPendRes  = DB.reservas.filter(r => r.status==='pendiente' && !_reservaMatchesExistingService(r));
 
     const iStaysAll        = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado');
     const paymentsInPeriod = DB.payments.filter(p => inRangeI(p.date) && !_isDcPayment(p) && iStaysAll.some(s => s.id === p.stay_id));
@@ -13375,6 +13380,7 @@ function renderReservasPage() {
       <td>
         ${_dogNameHtml(dog)} <span class="text-muted text-sm">${dog?.owner_last_name||''}</span>
         ${isOverdue?`<div style="font-size:11px;color:var(--red-700,#b91c1c);font-weight:600;margin-top:2px">⚠ ${overdueLabel}</div>`:''}
+        ${_reservaMatchesExistingService(r)?`<div style="font-size:11px;color:var(--amber-800);font-weight:600;margin-top:2px">⚠ Ya existe un ${r.type==='hospedaje'?'hospedaje':'daycare'} con esta fecha — activá la reserva para vincularla o marcala como caída. No se cuenta en pendiente potencial.</div>`:''}
       </td>
       <td style="${isOverdue?'color:var(--red-700,#b91c1c);font-weight:600':''}">
         ${dateLabel}
@@ -13996,6 +14002,19 @@ function calcReservaTotal(r) {
   }
 }
 
+// Reserva pendiente cuyo servicio ya existe como registro real (mismo perro y
+// misma fecha de ingreso/día). No cambia el estado de la reserva (regla del
+// usuario: crear un hospedaje no activa reservas), pero evita contar el mismo
+// servicio dos veces en pendiente potencial / proyectados.
+function _reservaMatchesExistingService(r) {
+  if (!r || r.status !== 'pendiente') return false;
+  if (r.type === 'hospedaje') {
+    return DB.stays.some(s => s.dog_id === r.dog_id && s.check_in_date === r.reserved_from &&
+      s.service_type === 'hospedaje' && s.status !== 'cancelado');
+  }
+  return DB.daycares.some(d => d.dog_id === r.dog_id && d.date === r.date);
+}
+
 function _reservaAdvanceTotal(r) {
   if (!r) return 0;
   // All DB.payments from this reserva (floating or already linked to a stay)
@@ -14149,12 +14168,16 @@ function _migrateAllReservasToPendiente() {
 // Used by all reports/exports/income as the single source of truth.
 function _reportStays() {
   const activeReservaIds = new Set(DB.reservas.filter(r => r.status === 'activa').map(r => r.id));
-  return DB.stays.filter(s => !s.from_reserva_id || activeReservaIds.has(s.from_reserva_id));
+  // Una estadía con pagos reales NUNCA se oculta de los reportes, aunque su
+  // reserva de origen no esté activa — el dinero cobrado siempre debe contar.
+  return DB.stays.filter(s => !s.from_reserva_id || activeReservaIds.has(s.from_reserva_id)
+    || DB.payments.some(p => p.stay_id === s.id && !_isDcPayment(p)));
 }
 
 function _reportDaycares() {
   const activeReservaIds = new Set(DB.reservas.filter(r => r.status === 'activa').map(r => r.id));
-  return DB.daycares.filter(d => !d.from_reserva_id || activeReservaIds.has(d.from_reserva_id));
+  return DB.daycares.filter(d => !d.from_reserva_id || activeReservaIds.has(d.from_reserva_id)
+    || DB.payments.some(p => p.stay_id === d.id && _isDcPayment(p)));
 }
 
 function _repairOrphanedReservaStays() {
