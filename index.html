@@ -1880,9 +1880,15 @@ th:last-child { border-top-right-radius: 8px; }
         </div>
       </div>
       <div id="dc-advance-section" style="display:none;margin-bottom:12px">
-        <div class="form-group">
-          <label>Monto adelantado (S/)</label>
-          <input type="number" id="dc-advance-amount" placeholder="0" min="0" step="1">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Monto adelantado (S/)</label>
+            <input type="number" id="dc-advance-amount" placeholder="0" min="0" step="1">
+          </div>
+          <div class="form-group">
+            <label>Fecha del pago *</label>
+            <input type="date" id="dc-advance-date">
+          </div>
         </div>
       </div>
       <div class="form-group">
@@ -2765,8 +2771,16 @@ function datesInRange(from, to) {
 }
 
 // ===================== BUSINESS LOGIC =====================
+// Los pagos de hospedaje y daycare comparten el campo stay_id, pero los IDs de
+// DB.stays y DB.daycares pueden coincidir. p.service==='daycare' desambigua;
+// para pagos antiguos sin flag, se atribuye al hospedaje si existe uno con ese ID.
+function _isDcPayment(p) {
+  if (p.service === 'daycare') return true;
+  if (p.service === 'stay') return false;
+  return !DB.stays.some(s => s.id === p.stay_id) && DB.daycares.some(d => d.id === p.stay_id);
+}
 function getPaidAmount(stayId) {
-  return DB.payments.filter(p => p.stay_id === stayId).reduce((s,p) => s + parseFloat(p.amount), 0);
+  return DB.payments.filter(p => p.stay_id === stayId && !_isDcPayment(p)).reduce((s,p) => s + parseFloat(p.amount), 0);
 }
 function getPendingAmount(stay) {
   let reservaAdv = 0;
@@ -2778,7 +2792,8 @@ function getPendingAmount(stay) {
   return Math.max(0, calcStayTotal(stay) - getPaidAmount(stay.id) - reservaAdv);
 }
 function getDcPaidAmount(dc) {
-  return getPaidAmount(dc.id) + (parseFloat(dc.advance_paid) || 0);
+  return DB.payments.filter(p => p.stay_id === dc.id && _isDcPayment(p)).reduce((s,p) => s + parseFloat(p.amount), 0)
+       + (parseFloat(dc.advance_paid) || 0);
 }
 function getDcPendingAmount(dc) {
   return Math.max(0, calcDaycareTotal(dc) - getDcPaidAmount(dc));
@@ -5455,7 +5470,7 @@ function saveStay() {
     document.querySelectorAll('#stay-advance-rows > div[id^="stay-adv-row-"]').forEach(row => {
       const amt = parseFloat(row.querySelector('.stay-adv-amount')?.value) || 0;
       const dt = row.querySelector('.stay-adv-date')?.value || today();
-      if (amt > 0) payments.push({ id: DB.nextId(payments), stay_id: savedStayId, amount: amt, date: dt, note: 'Adelanto al registro' });
+      if (amt > 0) payments.push({ id: DB.nextId(payments), stay_id: savedStayId, service: 'stay', amount: amt, date: dt, note: 'Adelanto al registro' });
     });
     DB.savePayments(payments);
   }
@@ -5623,7 +5638,7 @@ function saveDcPayment(dcId) {
   if (!date) { alert('Ingresá la fecha del pago.'); return; }
   if (!regCtId) { alert('Seleccioná la cuidadora que registra.'); return; }
   const pmts = DB.payments;
-  pmts.push({ id: DB.nextId(pmts), stay_id: dcId, amount, date, note: notes || '', registered_by_ct_id: regCtId });
+  pmts.push({ id: DB.nextId(pmts), stay_id: dcId, service: 'daycare', amount, date, note: notes || '', registered_by_ct_id: regCtId });
   DB.savePayments(pmts);
   closeModal('modal-dc-pay');
   _globalRefreshFinancial();
@@ -5689,7 +5704,7 @@ function removePaymentRow(idx) {
 }
 
 function renderPaymentHistory(stayId) {
-  const payments = DB.payments.filter(p => p.stay_id === stayId).sort((a,b) => b.date.localeCompare(a.date));
+  const payments = DB.payments.filter(p => p.stay_id === stayId && !_isDcPayment(p)).sort((a,b) => b.date.localeCompare(a.date));
   const el = document.getElementById('payment-history');
   if (!payments.length) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="section-title" style="margin-bottom:8px">Historial de pagos registrados</div>` +
@@ -5731,7 +5746,7 @@ function savePayments() {
   if (hasError) { alert('Revisá que todos los pagos tengan monto y fecha válidos.'); return; }
   if (!toSave.length) { closeModal('modal-payment'); return; }
   const payments = DB.payments;
-  toSave.forEach(p => payments.push({ id: DB.nextId(payments), stay_id: paymentStayId, registered_by_ct_id: payRegCt, ...p }));
+  toSave.forEach(p => payments.push({ id: DB.nextId(payments), stay_id: paymentStayId, service: 'stay', registered_by_ct_id: payRegCt, ...p }));
   DB.savePayments(payments);
   openPaymentModal(paymentStayId);
   _globalRefreshFinancial();
@@ -5936,6 +5951,8 @@ function openDaycareModal() {
   if (dcAdvSec) dcAdvSec.style.display = 'none';
   const dcAdvAmt = document.getElementById('dc-advance-amount');
   if (dcAdvAmt) dcAdvAmt.value = '';
+  const dcAdvDate = document.getElementById('dc-advance-date');
+  if (dcAdvDate) dcAdvDate.value = today();
   _resetDaycareDiscountUI();
   _dcHolState = { mode: 'pending', useHoliday: null, date: null };
   const dcHolAlert = document.getElementById('dc-holiday-alert');
@@ -6029,6 +6046,8 @@ function openEditDaycare(id) {
   if (dcAdvSec) dcAdvSec.style.display = 'none';
   const dcAdvAmt = document.getElementById('dc-advance-amount');
   if (dcAdvAmt) dcAdvAmt.value = '';
+  const dcAdvDateE = document.getElementById('dc-advance-date');
+  if (dcAdvDateE) dcAdvDateE.value = today();
   // Load discount / manual
   _resetDaycareDiscountUI();
   if (dc.manual_total != null) {
@@ -6143,12 +6162,24 @@ function saveDaycare() {
     const newDcId = DB.nextId(dcs);
     const dcAdvanceVal = document.querySelector('input[name="dc-advance"]:checked')?.value;
     const dcAdvanceAmount = (dcAdvanceVal === 'si') ? (parseFloat(document.getElementById('dc-advance-amount')?.value) || 0) : 0;
-    dcs.push({ id: newDcId, dog_id: dogId, date, notes, ...billingFields, advance_paid: dcAdvanceAmount,
+    const dcAdvanceDate = document.getElementById('dc-advance-date')?.value || '';
+    if (dcAdvanceAmount > 0 && !dcAdvanceDate) {
+      alertEl.innerHTML = '<div class="alert alert-danger">Ingresá la fecha en que se realizó el pago adelantado.</div>';
+      return;
+    }
+    dcs.push({ id: newDcId, dog_id: dogId, date, notes, ...billingFields, advance_paid: 0,
       registered_by_ct_id: regCtId,
       ...(dcDiscPct > 0 && dcManAmt == null ? { discount_pct: dcDiscPct } : {}),
       ...(dcManAmt != null ? { manual_total: dcManAmt } : {}),
       ...(dcCustomHols !== undefined ? { custom_holidays: dcCustomHols } : {}) });
     DB.saveDaycares(dcs);
+    // Adelanto → pago real con fecha explícita (nunca se asume la fecha del servicio)
+    if (dcAdvanceAmount > 0) {
+      const pmts = DB.payments;
+      pmts.push({ id: DB.nextId(pmts), stay_id: newDcId, service: 'daycare', amount: dcAdvanceAmount,
+        date: dcAdvanceDate, note: 'Adelanto al registro', registered_by_ct_id: regCtId });
+      DB.savePayments(pmts);
+    }
     if (ctId) {
       const asgnUser = document.getElementById('dc-asgn-user').value.trim();
       const asgns = DB.assignments;
@@ -6157,7 +6188,7 @@ function saveDaycare() {
     }
   }
   closeModal('modal-daycare');
-  renderDaycareTable();
+  _globalRefreshFinancial();
 }
 
 
@@ -7215,7 +7246,7 @@ function openDcDebtBreakdown(dcId) {
   const base  = calcDaycareBaseTotal(dc);
   const paid  = getDcPaidAmount(dc);
   const pend  = getDcPendingAmount(dc);
-  const pays  = DB.payments.filter(p => p.stay_id === dcId).sort((a,b) => a.date.localeCompare(b.date));
+  const pays  = DB.payments.filter(p => p.stay_id === dcId && _isDcPayment(p)).sort((a,b) => a.date.localeCompare(b.date));
   const isHourly = dc.billing_type === 'block' || dc.billing_type === 'hourly';
 
   document.getElementById('debt-modal-title').textContent = `Desglose daycare — ${dog?.name||'?'} ${dog?.owner_last_name||''}`;
@@ -7299,7 +7330,7 @@ function _renderDebtBreakdown() {
   const totalAmt = calcStayTotal(stay);
   const paid     = getPaidAmount(stayId);
   const pend     = getPendingAmount(stay);
-  const pays     = DB.payments.filter(p => p.stay_id === stayId).sort((a,b) => a.date.localeCompare(b.date));
+  const pays     = DB.payments.filter(p => p.stay_id === stayId && !_isDcPayment(p)).sort((a,b) => a.date.localeCompare(b.date));
 
   document.getElementById('debt-modal-title').textContent = `Desglose — ${dog?.name||'?'} ${dog?.owner_last_name||''}`;
 
@@ -7484,16 +7515,13 @@ function renderIncome() {
   });
 
   // Cobrado = dinero recibido en el período (fecha del pago/cobro, no del servicio)
-  const paymentsInPeriod  = DB.payments.filter(p => inRange(p.date) && allStaysRaw.some(s => s.id === p.stay_id));
-  const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && allStaysRaw.some(s => s.id === p.stay_id));
+  const paymentsInPeriod  = DB.payments.filter(p => inRange(p.date) && !_isDcPayment(p) && allStaysRaw.some(s => s.id === p.stay_id));
+  const paymentsOutPeriod = DB.payments.filter(p => !inRange(p.date) && !_isDcPayment(p) && allStaysRaw.some(s => s.id === p.stay_id));
   const totalCobradoHosp  = paymentsInPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
   const totalFueraPeriodo = paymentsOutPeriod.reduce((s,p) => s + parseFloat(p.amount), 0);
-  // dcCobrado: pagos registrados por fecha de pago + advance_paid por fecha de servicio (proxy)
-  const dcPmtsCobrado = DB.payments.filter(p => inRange(p.date) && allDcsRaw.some(d => d.id === p.stay_id))
-                                    .reduce((s,p) => s + parseFloat(p.amount), 0);
-  const dcAdvCobrado  = allDcsRaw.filter(d => inRange(d.date) && parseFloat(d.advance_paid) > 0)
-                                  .reduce((s,d) => s + parseFloat(d.advance_paid), 0);
-  const dcCobrado     = dcPmtsCobrado + dcAdvCobrado;
+  // dcCobrado: todos los pagos de daycare por fecha de pago real (sin proxies)
+  const dcCobrado = DB.payments.filter(p => inRange(p.date) && _isDcPayment(p) && allDcsRaw.some(d => d.id === p.stay_id))
+                               .reduce((s,p) => s + parseFloat(p.amount), 0);
   const restCobrado = DB.restaurant.filter(r => r.paid && inRange(r.paid_date||r.date)).reduce((s,r) => s + r.total, 0);
 
   const totalResProyectado = pendingRes.reduce((s,r) => s + calcReservaTotal(r), 0);
@@ -8109,7 +8137,7 @@ function renderIncome() {
 
   const allStaysAll = _reportStays().filter(s => s.service_type === 'hospedaje' && s.status !== 'cancelado');
   const cbdItems = [
-    ...DB.payments.filter(p => cbdInRange(p.date) && allStaysAll.some(s => s.id === p.stay_id)).map(p => {
+    ...DB.payments.filter(p => cbdInRange(p.date) && !_isDcPayment(p) && allStaysAll.some(s => s.id === p.stay_id)).map(p => {
       const stay = DB.stays.find(s => s.id === p.stay_id);
       const dog  = stay ? DB.getDog(stay.dog_id) : null;
       return { dog_id: stay?.dog_id, date: p.date, tipo: 'Hospedaje', _type: 'stay', refId: stay?.id,
@@ -8118,22 +8146,14 @@ function renderIncome() {
         dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
         actions: `<button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">✕</button>` };
     }),
-    // Daycare: pagos registrados individualmente (fecha de pago real)
-    ...DB.payments.filter(p => cbdInRange(p.date) && _reportDaycares().some(d => d.id === p.stay_id)).map(p => {
+    // Daycare: cada pago individual por su fecha de pago real (adelantos incluidos)
+    ...DB.payments.filter(p => cbdInRange(p.date) && _isDcPayment(p) && _reportDaycares().some(d => d.id === p.stay_id)).map(p => {
       const dc  = DB.daycares.find(d => d.id === p.stay_id);
       const dog = dc ? DB.getDog(dc.dog_id) : null;
       return { dog_id: dc?.dog_id, date: p.date, tipo: 'Daycare', _type: 'dc', refId: dc?.id,
         servicio: dc ? `Daycare ${fmtDate(dc.date)}` : '—', nota: p.note||'',
         amount: parseFloat(p.amount), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
-        actions: dc ? `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${dc.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${dc.id});renderIncome()">✕</button>` : '' };
-    }),
-    // Daycare: adelanto registrado al crear (fecha del servicio como proxy de pago)
-    ..._reportDaycares().filter(d => cbdInRange(d.date) && parseFloat(d.advance_paid) > 0).map(d => {
-      const dog = DB.getDog(d.dog_id);
-      return { dog_id: d.dog_id, date: d.date, tipo: 'Daycare', _type: 'dc', refId: d.id,
-        servicio: `Daycare ${fmtDate(d.date)}`, nota: `${d.notes||''}${d.discount_pct>0?' · desc. '+d.discount_pct+'%':''}`.trim()||'',
-        amount: parseFloat(d.advance_paid), dogName: `${dog?.name||'?'} ${dog?.owner_last_name||''}`,
-        actions: `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${d.id})">✏️</button><button class="btn btn-danger btn-sm" onclick="deleteDaycare(${d.id});renderIncome()">✕</button>` };
+        actions: `<button class="btn btn-danger btn-sm" onclick="deletePayment(${p.id})">✕</button>${dc ? `<button class="btn btn-secondary btn-sm" onclick="openEditDaycare(${dc.id})">✏️</button>` : ''}` };
     }),
     ...DB.restaurant.filter(r => r.paid && cbdInRange(r.paid_date||r.date)).map(r => {
       const dog = DB.getDog(r.dog_id);
@@ -11174,6 +11194,7 @@ function init() {
   checkVacationStatus();
   initHolidays();
   _migrateAllReservasToPendiente();
+  _migrateDcAdvancesToPayments();
   _repairOrphanedReservaStays();
   renderDashboard();
   updateMedsAlertDot();
@@ -12134,17 +12155,15 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
   html += sec('14. TODOS LOS PAGOS DEL PERÍODO');
   const aiAdvances = (() => {
     const list = [];
-    // Pagos de hospedaje registrados en DB.payments (adelantos al crear reserva + pagos parciales)
-    allPays.filter(p => inRange(p.date) && parseFloat(p.amount) > 0).forEach(p => {
-      const st = DB.stays.find(s => s.id === p.stay_id);
-      const dog = st ? DB.getDog(st.dog_id) : null;
+    // Pagos registrados en DB.payments — hospedaje y daycare por fecha de pago real
+    allPays.filter(p => inRange(p.date) && parseFloat(p.amount) > 0 && p.stay_id).forEach(p => {
+      const isDc = _isDcPayment(p);
+      const svc = isDc ? DB.daycares.find(d => d.id === p.stay_id) : DB.stays.find(s => s.id === p.stay_id);
+      const dog = svc ? DB.getDog(svc.dog_id) : null;
       const isAdv = (p.note||'').toLowerCase().includes('adelanto');
-      list.push({ concepto: isAdv ? 'Pago adelantado hospedaje' : 'Pago hospedaje', fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: p.note || '' });
-    });
-    // Adelantos de daycare (advance_paid en el registro)
-    DB.daycares.filter(d => (d.advance_paid || 0) > 0 && inRange(d.date)).forEach(d => {
-      const dog = DB.getDog(d.dog_id);
-      list.push({ concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(d.advance_paid), nota: '' });
+      const concepto = isDc ? (isAdv ? 'Pago adelantado daycare' : 'Pago daycare')
+                            : (isAdv ? 'Pago adelantado hospedaje' : 'Pago hospedaje');
+      list.push({ concepto, fecha: p.date, perro: dog?.name || '?', dueno: dog?.owner_last_name || '?', amount: parseFloat(p.amount), nota: p.note || '' });
     });
     // Adelantos de reservas — todos los estados; si está vinculado a estadía, aparece como pago de hospedaje
     (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
@@ -12189,13 +12208,11 @@ BLOQUE E — QUIÉN REGISTRÓ QUÉ EN EL PERÍODO
     const iPendRes  = DB.reservas.filter(r => r.status==='pendiente');
 
     const iStaysAll        = _reportStays().filter(s => s.service_type==='hospedaje' && s.status!=='cancelado');
-    const paymentsInPeriod = DB.payments.filter(p => inRangeI(p.date) && iStaysAll.some(s => s.id === p.stay_id));
+    const paymentsInPeriod = DB.payments.filter(p => inRangeI(p.date) && !_isDcPayment(p) && iStaysAll.some(s => s.id === p.stay_id));
     const totalCobradoHosp = paymentsInPeriod.reduce((s,p)=>s+parseFloat(p.amount),0);
     const iDcsRaw = _reportDaycares();
-    const dcCobrado = DB.payments.filter(p => inRangeI(p.date) && iDcsRaw.some(d => d.id === p.stay_id))
-                                  .reduce((s,p) => s + parseFloat(p.amount), 0)
-                    + iDcsRaw.filter(d => inRangeI(d.date) && parseFloat(d.advance_paid) > 0)
-                             .reduce((s,d) => s + parseFloat(d.advance_paid), 0);
+    const dcCobrado = DB.payments.filter(p => inRangeI(p.date) && _isDcPayment(p) && iDcsRaw.some(d => d.id === p.stay_id))
+                                  .reduce((s,p) => s + parseFloat(p.amount), 0);
     const restCobrado      = DB.restaurant.filter(r=>r.paid&&inRangeI(r.paid_date||r.date)).reduce((s,r)=>s+r.total,0);
     let totalResAdv = 0;
     DB.reservas.filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).forEach(r => {
@@ -12612,23 +12629,21 @@ function buildExportData(from, to) {
     }
   });
   const allDcsForExport = _reportDaycares();
-  const dcExportPmts  = DB.payments.filter(p => inRange(p.date) && allDcsForExport.some(d => d.id === p.stay_id))
+  const dcExportPmts  = DB.payments.filter(p => inRange(p.date) && _isDcPayment(p) && allDcsForExport.some(d => d.id === p.stay_id))
                                     .reduce((s,p) => s + parseFloat(p.amount), 0);
-  const dcExportAdv   = dcs.filter(d => parseFloat(d.advance_paid) > 0)
-                           .reduce((s,d) => s + parseFloat(d.advance_paid), 0);
   const totalIncome    = stays.reduce((s, st) => s + getPaidAmount(st.id), 0)
                        + rests.filter(r=>r.paid).reduce((s,r)=>s+r.total,0)
-                       + resAdvTotal + dcExportPmts + dcExportAdv;
+                       + resAdvTotal + dcExportPmts;
   const totalPending   = stays.reduce((s, st) => s + getPendingAmount(st), 0)
                        + rests.filter(r=>!r.paid).reduce((s,r)=>s+r.total,0);
   const totalProjected = stays.reduce((s, st) => s + calcStayTotal(st), 0);
 
   const advStays = DB.payments
-    .filter(p => p.note === 'Adelanto al registro' && inRange(p.date))
+    .filter(p => p.note === 'Adelanto al registro' && !_isDcPayment(p) && inRange(p.date))
     .map(p => { const st = DB.stays.find(s => s.id === p.stay_id); const dog = st ? DB.getDog(st.dog_id) : null; return { concepto: 'Pago adelantado hospedaje', fecha: p.date, perro: dog?.name || '?', amount: p.amount }; });
-  const advDcs = DB.daycares
-    .filter(d => (d.advance_paid || 0) > 0 && inRange(d.date))
-    .map(d => { const dog = DB.getDog(d.dog_id); return { concepto: 'Pago adelantado daycare', fecha: d.date, perro: dog?.name || '?', amount: d.advance_paid }; });
+  const advDcs = DB.payments
+    .filter(p => _isDcPayment(p) && (p.note||'').startsWith('Adelanto') && inRange(p.date))
+    .map(p => { const dc = DB.daycares.find(d => d.id === p.stay_id); const dog = dc ? DB.getDog(dc.dog_id) : null; return { concepto: 'Pago adelantado daycare', fecha: p.date, perro: dog?.name || '?', amount: parseFloat(p.amount) }; });
   // Adelantos de reservas — solo los no vinculados a estadía (los vinculados ya están en allPayments)
   const advRes = (DB.reservas || []).filter(r => _reservaAdvanceTotal(r) > 0 && !_reservaAdvanceLinkedToStay(r)).flatMap(r => {
     const dog = DB.getDog(r.dog_id);
@@ -14054,6 +14069,39 @@ function setReservaStatus(id, newStatus) {
   }); // end _confirmModal
 }
 
+// Migración única: adelantos de daycare guardados como advance_paid (sin fecha
+// de pago propia) pasan a ser pagos reales en DB.payments. La fecha usada es la
+// del servicio y queda marcada como estimada — el usuario puede editarla o
+// eliminarla desde el historial de pagos. Además etiqueta pagos antiguos de
+// reservas con service según el tipo de la reserva (desambigua IDs repetidos
+// entre hospedajes y daycares).
+function _migrateDcAdvancesToPayments() {
+  if (localStorage.getItem('aldea_mig_dc_advances_v1')) return;
+  const pmts = DB.payments;
+  let changed = false;
+  // 1. Etiquetar pagos vinculados a reservas según el tipo
+  pmts.forEach(p => {
+    if (p.service || !p.from_reserva_id) return;
+    const r = DB.reservas.find(x => x.id === p.from_reserva_id);
+    if (r) { p.service = r.type === 'daycare' ? 'daycare' : 'stay'; changed = true; }
+  });
+  // 2. advance_paid → pago real (fecha estimada = día del servicio, editable)
+  const dcs = DB.daycares;
+  let dcsChanged = false;
+  dcs.forEach(d => {
+    const adv = parseFloat(d.advance_paid) || 0;
+    if (adv > 0) {
+      pmts.push({ id: DB.nextId(pmts), stay_id: d.id, service: 'daycare', amount: adv,
+        date: d.date, note: 'Adelanto (fecha estimada: día del servicio)' });
+      d.advance_paid = 0;
+      changed = true; dcsChanged = true;
+    }
+  });
+  if (changed) DB.savePayments(pmts);
+  if (dcsChanged) DB.saveDaycares(dcs);
+  localStorage.setItem('aldea_mig_dc_advances_v1', '1');
+}
+
 function _migrateAllReservasToPendiente() {
   if (localStorage.getItem('aldea_mig_reservas_pendiente_v1')) return;
   const arr = DB.reservas;
@@ -14245,10 +14293,10 @@ function activateReserva(id) {
       const pmts = DB.payments;
       const floating = pmts.filter(p => p.from_reserva_id === r.id && !p.stay_id);
       if (floating.length) {
-        floating.forEach(p => { p.stay_id = newStay.id; });
+        floating.forEach(p => { p.stay_id = newStay.id; p.service = 'stay'; });
       } else {
         advPmts.forEach(p => {
-          if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, amount: p.amount, date: p.date || today(), note: 'Adelanto desde reserva', from_reserva_id: r.id });
+          if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newStay.id, service: 'stay', amount: p.amount, date: p.date || today(), note: 'Adelanto desde reserva', from_reserva_id: r.id });
         });
       }
       DB.savePayments(pmts);
@@ -14327,10 +14375,10 @@ function _dcActivateConfirm() {
     const pmts = DB.payments;
     const floating = pmts.filter(p => p.from_reserva_id === r.id && !p.stay_id);
     if (floating.length) {
-      floating.forEach(p => { p.stay_id = newDc.id; });
+      floating.forEach(p => { p.stay_id = newDc.id; p.service = 'daycare'; });
     } else {
       dcAdvPmts.forEach(p => {
-        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, amount: p.amount, date: p.date || today(), note: 'Adelanto desde reserva daycare', from_reserva_id: r.id });
+        if (p.amount > 0) pmts.push({ id: DB.nextId(pmts), stay_id: newDc.id, service: 'daycare', amount: p.amount, date: p.date || today(), note: 'Adelanto desde reserva daycare', from_reserva_id: r.id });
       });
     }
     DB.savePayments(pmts);
